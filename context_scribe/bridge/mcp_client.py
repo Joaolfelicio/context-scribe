@@ -34,66 +34,60 @@ class MemoryBankClient:
             print(f"Failed to connect to MCP server: {e}")
             raise
 
-    async def save_rule(self, rule: str, project_name: str = "global"):
-        """Save a new rule to the memory bank using the update_memory tool."""
+    async def read_rules(self, project_name: str = "global") -> str:
+        """Read existing content from the memory bank."""
+        if not self.session:
+            return ""
+        try:
+            read_result = await self.session.call_tool(
+                "memory_bank_read",
+                arguments={
+                    "projectName": project_name,
+                    "fileName": "global_rules.md"
+                }
+            )
+            if not (hasattr(read_result, 'isError') and read_result.isError):
+                if hasattr(read_result, 'content') and read_result.content:
+                    return read_result.content[0].text
+        except Exception:
+            pass
+        return ""
+
+    async def save_rule(self, content: str, project_name: str = "global"):
+        """Save rules directly to the memory bank."""
         if not self.session:
             raise RuntimeError("Not connected to MCP server")
             
         try:
-            # 1. Read existing content
-            existing_content = ""
-            try:
-                read_result = await self.session.call_tool(
-                    "memory_bank_read",
-                    arguments={
-                        "projectName": project_name,
-                        "fileName": "global_rules.md"
-                    }
-                )
-                if not (hasattr(read_result, 'isError') and read_result.isError):
-                    if hasattr(read_result, 'content') and read_result.content:
-                        existing_content = read_result.content[0].text
-            except Exception:
-                pass # File might not exist yet
-
-            # 2. Append new rule
-            if existing_content:
-                # Avoid exact duplicates
-                if rule.strip() in existing_content:
-                    return None
-                new_content = f"{existing_content.strip()}\\n\\n{rule.strip()}"
-            else:
-                new_content = rule.strip()
-
-            # 3. Try to update
+            # 1. Try to update
             try:
                 result = await self.session.call_tool(
                     "memory_bank_update", 
                     arguments={
                         "projectName": project_name,
                         "fileName": "global_rules.md",
-                        "content": new_content
+                        "content": content
                     }
                 )
                 if hasattr(result, 'isError') and result.isError:
-                    # If update fails (e.g. file doesn't exist), fallback to write
+                    # 2. Fallback to write if file doesn't exist
                     result = await self.session.call_tool(
                         "memory_bank_write", 
                         arguments={
                             "projectName": project_name,
                             "fileName": "global_rules.md",
-                            "content": new_content
+                            "content": content
                         }
                     )
                 return result
             except Exception:
-                # Fallback to write if update tool throws exception
+                # 3. Last fallback to write
                 result = await self.session.call_tool(
                     "memory_bank_write", 
                     arguments={
                         "projectName": project_name,
                         "fileName": "global_rules.md",
-                        "content": new_content
+                        "content": content
                     }
                 )
                 return result

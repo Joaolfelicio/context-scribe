@@ -15,22 +15,29 @@ class Evaluator:
         except (subprocess.CalledProcessError, FileNotFoundError):
             logger.warning("Gemini CLI not found.")
 
-    def evaluate_interaction(self, interaction: Interaction) -> Optional[str]:
+    def evaluate_interaction(self, interaction: Interaction, existing_rules: str = "") -> Optional[str]:
         prompt = f"""
 You are a 'Persistent Secretary' for an AI agent. Your job is to read user-agent chat logs
-and extract ONLY long-term behavioral rules, project constraints, or user preferences.
-Ignore transient task chatter, coding requests, debugging steps, or temporary instructions.
+and extract long-term behavioral rules, project constraints, or user preferences.
 
-Analyze the following interaction (Role: {interaction.role}):
+EXISTING RULES IN MEMORY BANK:
+'''
+{existing_rules}
+'''
+
+LATEST INTERACTION TO ANALYZE (Role: {interaction.role}):
 '''
 {interaction.content}
 '''
 
-If there is a clear, long-term rule or constraint that should be saved to the Memory Bank,
-extract it and output ONLY the rule. If it contradicts an existing common practice, note that.
-If there is NO long-term rule, output exactly: NO_RULE
+INSTRUCTIONS:
+1. Extract any new long-term rules or constraints from the latest interaction.
+2. If a new rule contradicts an existing rule, the NEW rule takes precedence (New-Trumps-Old).
+3. If there is a change or a new rule, output the ENTIRE consolidated list of rules for the Memory Bank.
+4. Maintain a clean, bulleted Markdown format.
+5. If no new rules are found and no changes are needed, output exactly: NO_RULE
 """
-        logger.debug(f"Evaluating interaction: {interaction.content[:50]}...")
+        logger.debug(f"Evaluating interaction with conflict resolution...")
         try:
             # We use non-interactive mode and json output with a strict timeout
             result = subprocess.run(
@@ -39,7 +46,7 @@ If there is NO long-term rule, output exactly: NO_RULE
                 text=True,
                 check=False,
                 stdin=subprocess.DEVNULL,
-                timeout=30
+                timeout=45
             )
             
             output = result.stdout.strip()

@@ -80,22 +80,25 @@ async def run_daemon(tool: str):
                 # Fetch next interaction
                 interaction = await loop.run_in_executor(None, next, watch_iter)
                 
+                # Fetch existing rules for conflict resolution
+                existing_rules = await mcp_client.read_rules()
+                
                 live.update(Panel(Text(f"[THINK] Evaluating interaction from {interaction.role}...", style="yellow"), title="Context-Scribe Status"))
                 
-                rule = await loop.run_in_executor(None, evaluator.evaluate_interaction, interaction)
+                updated_content = await loop.run_in_executor(None, evaluator.evaluate_interaction, interaction, existing_rules)
                 
-                if rule:
-                    live.update(Panel(Text(f"[RESOLVE] Found rule: {rule[:50]}...", style="magenta"), title="Context-Scribe Status"))
+                if updated_content:
+                    live.update(Panel(Text(f"[RESOLVE] Updating Memory Bank...", style="magenta"), title="Context-Scribe Status"))
                     
                     # Ensure global project exists or create it. This logic depends on the specific MCP server.
                     # For simplicity, we just attempt to write.
                     live.update(Panel(Text(f"[BANK] Committing to MCP Server...", style="green"), title="Context-Scribe Status"))
                     
-                    result = await mcp_client.save_rule(rule)
+                    result = await mcp_client.save_rule(updated_content)
                     if hasattr(result, 'isError') and result.isError:
                         console.print(f"\n[bold red]Failed to save rule:[/bold red] {result.content}")
                     else:
-                        console.print(f"\n[bold green]Saved new rule to Memory Bank:[/bold green] {rule[:100]}...")
+                        console.print(f"\n[bold green]Memory Bank Updated Successfully.[/bold green]")
                     
         except KeyboardInterrupt:
             console.print("\n[yellow]Shutting down...[/yellow]")

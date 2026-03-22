@@ -38,6 +38,17 @@ class GeminiProvider(BaseProvider):
         self.log_dir = Path(os.path.expanduser(log_dir))
         self.interaction_queue = []
         self.last_positions = {}  # Track the last read position for each file
+        self._initialize_positions()
+
+    def _initialize_positions(self):
+        """Pre-fill positions with current file sizes to skip historical data."""
+        if self.log_dir.exists():
+            for file_path in self.log_dir.glob("**/*.json"):
+                try:
+                    self.last_positions[str(file_path)] = file_path.stat().st_size
+                    self.last_positions[f"{file_path}_mtime"] = os.path.getmtime(file_path)
+                except Exception:
+                    pass
 
     def _process_file(self, file_path: str):
         # Safety: copy file to avoid locking issues
