@@ -4,7 +4,7 @@ import shutil
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Dict, Set
 
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
@@ -16,13 +16,10 @@ class GeminiLogHandler(FileSystemEventHandler):
     def __init__(self, callback):
         super().__init__()
         self.callback = callback
-        self.processed_files = set()
 
     def on_modified(self, event):
         if event.is_directory:
             return
-            
-        # Try to process specific log files (e.g., .json files in the tmp directory)
         if event.src_path.endswith(".json"):
             self.callback(event.src_path)
 
@@ -37,18 +34,48 @@ class GeminiProvider(BaseProvider):
     def __init__(self, log_dir: str = "~/.gemini/tmp/"):
         self.log_dir = Path(os.path.expanduser(log_dir))
         self.interaction_queue = []
-        self.last_positions = {}  # Track the last read position for each file
-        self._initialize_positions()
+        # Track processed message IDs to avoid duplicates
+        self.processed_message_ids: Dict[str, Set[str]] = {}
+        # Track file mtimes to detect changes
+        self.last_mtimes: Dict[str, float] = {}
+        self._initialize_historical_logs()
 
-    def _initialize_positions(self):
-        """Pre-fill positions with current file sizes to skip historical data."""
-        if self.log_dir.exists():
-            for file_path in self.log_dir.glob("**/*.json"):
-                try:
-                    self.last_positions[str(file_path)] = file_path.stat().st_size
-                    self.last_positions[f"{file_path}_mtime"] = os.path.getmtime(file_path)
-                except Exception:
-                    pass
+    def _initialize_historical_logs(self):
+        """Skip all messages existing before the daemon starts."""
+        if not self.log_dir.exists():
+            return
+            
+        print("Initializing historical logs (skipping existing messages)...")
+        for file_path in self.log_dir.glob("**/*.json"):
+            try:
+                self.last_mtimes[str(file_path)] = os.path.getmtime(file_path)
+                with open(file_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    messages = self._get_messages_from_data(data)
+                    
+                    if isinstance(data, dict):
+                        session_id = data.get("sessionId") or data.get("id") or "unknown"
+                    else:
+                        session_id = "unknown"
+                    
+                    msg_ids = set()
+                    for msg in messages:
+                        raw_msg_id = msg.get("id") or msg.get("messageId") or str(msg)
+                        msg_ids.add(f"{session_id}_{raw_msg_id}")
+                        
+                    self.processed_message_ids[str(file_path)] = msg_ids
+            except Exception:
+                pass
+
+    def _get_messages_from_data(self, data) -> list:
+        """Extracts a list of message objects from various possible JSON structures."""
+        if isinstance(data, dict):
+            if "messages" in data:
+                return data["messages"]
+            return [data]
+        elif isinstance(data, list):
+            return data
+        return []
 
     def _process_file(self, file_path: str):
         # Safety: copy file to avoid locking issues
@@ -57,39 +84,36 @@ class GeminiProvider(BaseProvider):
             shutil.copy2(file_path, temp_path)
             
             with open(temp_path, "r", encoding="utf-8") as f:
-                # Seek to last read position to avoid re-reading
-                last_pos = self.last_positions.get(file_path, 0)
-                f.seek(last_pos)
-                
-                content = f.read()
-                
-                # Update last read position
-                self.last_positions[file_path] = f.tell()
-
-                if not content.strip():
+                content = f.read().strip()
+                if not content:
                     return
-
-                # Attempt to parse Gemini CLI format. 
-                # Assuming JSON lines or a JSON array. We might need to adjust this depending on the exact format.
-                try:
-                    # Let's assume it's JSON array for now, or lines.
-                    # We will just parse the whole file for now as a placeholder
-                    # In a real scenario, we would parse line by line or use a JSON parser that handles streams
-                    if content.strip().startswith("{"):
-                        # might be single json object
-                        data = json.loads(content)
-                        self._extract_interaction(data)
-                    elif content.strip().startswith("["):
-                        data = json.loads(content)
-                        for item in data:
-                            self._extract_interaction(item)
-                except json.JSONDecodeError:
-                    # If it's not valid JSON, we'll try to find any new rules or text
-                    # For a robust implementation, this needs exact log format.
-                    pass
+                data = json.loads(content)
+                
+                messages = self._get_messages_from_data(data)
+                
+                if str(file_path) not in self.processed_message_ids:
+                    self.processed_message_ids[str(file_path)] = set()
+                
+                processed_set = self.processed_message_ids[str(file_path)]
+                
+                if isinstance(data, dict):
+                    session_id = data.get("sessionId") or data.get("id") or "unknown"
+                else:
+                    session_id = "unknown"
+                
+                for msg in messages:
+                    # Message ID uniqueness is key
+                    # Combine with session_id because messageId might reset per session
+                    raw_msg_id = msg.get("id") or msg.get("messageId") or str(msg)
+                    msg_id = f"{session_id}_{raw_msg_id}"
+                    
+                    if msg_id not in processed_set:
+                        self._extract_interaction(msg)
+                        processed_set.add(msg_id)
 
         except Exception as e:
-            print(f"Error processing {file_path}: {e}")
+            # Silently fail for parsing errors (e.g. partial writes)
+            pass
         finally:
             if os.path.exists(temp_path):
                 try:
@@ -98,29 +122,29 @@ class GeminiProvider(BaseProvider):
                     pass
 
     def _extract_interaction(self, data: dict):
-        # Extract based on expected Gemini CLI log schema
-        # We check for common keys used in Gemini/MCP logs
-        role = data.get("role") or data.get("type") or "unknown"
+        # Support both 'type' and 'role' for the message sender
+        role = data.get("type") or data.get("role") or "unknown"
         
-        # content can be a string or a list of parts
-        content = data.get("content") or data.get("text") or ""
+        # Support string content, 'message' key, or list of parts
+        raw_content = data.get("content") or data.get("message") or data.get("text") or ""
         
-        if isinstance(content, list):
-            # If it's a list of message parts (common in some MCP/Gemini schemas)
+        if isinstance(raw_content, list):
             text_parts = []
-            for part in content:
+            for part in raw_content:
                 if isinstance(part, dict):
                     text_parts.append(part.get("text", ""))
                 else:
                     text_parts.append(str(part))
-            content = "\\n".join(text_parts)
+            content = "\n".join(text_parts)
+        else:
+            content = str(raw_content)
             
-        if content:
+        if content.strip():
             self.interaction_queue.append(
                 Interaction(
                     timestamp=datetime.now(),
                     role=role,
-                    content=str(content),
+                    content=content,
                     metadata=data
                 )
             )
@@ -136,13 +160,15 @@ class GeminiProvider(BaseProvider):
 
         try:
             while True:
-                # Manual scan for any .json files in the tmp directory
+                # Periodic manual scan for resilience
                 for file_path in self.log_dir.glob("**/*.json"):
-                    # Check if file is new or was modified
-                    mtime = os.path.getmtime(file_path)
-                    if str(file_path) not in self.last_positions or mtime > self.last_positions.get(f"{file_path}_mtime", 0):
-                        self.last_positions[f"{file_path}_mtime"] = mtime
-                        self._process_file(str(file_path))
+                    try:
+                        mtime = os.path.getmtime(file_path)
+                        if str(file_path) not in self.last_mtimes or mtime > self.last_mtimes.get(str(file_path), 0):
+                            self.last_mtimes[str(file_path)] = mtime
+                            self._process_file(str(file_path))
+                    except Exception:
+                        pass
                 
                 while self.interaction_queue:
                     yield self.interaction_queue.pop(0)
