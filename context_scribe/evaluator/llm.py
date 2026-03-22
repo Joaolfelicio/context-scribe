@@ -59,10 +59,10 @@ INSTRUCTIONS:
    - Output a JSON object with:
      - "scope": "GLOBAL" or "PROJECT"
      - "description": "A very concise (3-5 words) summary of the change."
-     - "rules": "The ENTIRE consolidated list of rules for that scope in Markdown."
+     - "rules": "The FULL list of consolidated rules. You MUST merge the new rule into the existing list and remove any duplicates or redundant headers. Return ONE single clean list."
 4. If NO changes are needed, output exactly: NO_RULE
 
-CRITICAL: Output ONLY the JSON object or NO_RULE.
+CRITICAL: **Do not repeat the existing list followed by a new list.** Return only the final, unified state. Output ONLY the JSON object or NO_RULE.
 """
         try:
             result = subprocess.run(
