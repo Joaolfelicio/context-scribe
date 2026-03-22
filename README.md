@@ -21,6 +21,14 @@ Context-Scribe operates on an **Observer-Evaluator-Bridge** pattern:
 2.  **Evaluator**: Headless evaluation powered by your local `gemini` CLI (no extra API keys required).
 3.  **Bridge**: Direct MCP integration syncing data into `@allpepper/memory-bank-mcp`.
 
+## 📋 Prerequisites
+
+*   **Python 3.10+**
+*   **Gemini CLI**: The daemon currently uses the local `gemini` CLI for headless evaluation.
+*   **Memory Bank MCP**: Your AI tool (e.g., Gemini CLI) **must** have the `@allpepper/memory-bank-mcp` server configured and trusted to correctly retrieve the memories persisted by Context-Scribe.
+
+> **Note**: Currently, only **Gemini CLI** is supported as a log source and evaluator. We have designed the architecture to be extensible and plan to support other AI tools (like Claude/Cline) in the future.
+
 ## 🛠️ Installation & Setup
 
 Ensure you have Python 3.10+ installed.
