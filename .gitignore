@@ -40,3 +40,5 @@ venv.bak/
 # Project specific
 *.snapshot
 logs.json
+
+.coverage

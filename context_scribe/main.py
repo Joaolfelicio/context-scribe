@@ -146,6 +146,8 @@ async def run_daemon(tool: str, bank_path: str) -> bool:
             while True:
                 live.update(db.generate_layout())
                 interaction = await loop.run_in_executor(None, next, watch_iter)
+                if interaction is None:
+                    continue
                 
                 db.status = f"🤔 Analyzing user message ({interaction.project_name})"
                 live.update(db.generate_layout())

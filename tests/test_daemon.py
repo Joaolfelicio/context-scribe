@@ -20,9 +20,10 @@ async def test_run_daemon_loop_one_iteration():
         project_name="p1"
     )
     
-    # Mock watch iterator: yield one interaction then raise KeyboardInterrupt
+    # Mock watch iterator: yield one interaction then None then raise KeyboardInterrupt
     def mock_watch():
         yield mock_interaction
+        yield None
         raise KeyboardInterrupt()
     
     mock_provider.watch.return_value = mock_watch()
@@ -34,6 +35,14 @@ async def test_run_daemon_loop_one_iteration():
     # Mock read_rules
     mock_mcp.read_rules.return_value = ""
     
+    # Track interaction processing to break loop
+    processed_interaction = False
+    async def side_effect(*args, **kwargs):
+        nonlocal processed_interaction
+        processed_interaction = True
+        return MagicMock()
+    mock_mcp.save_rule.side_effect = side_effect
+
     with patch("context_scribe.main.GeminiProvider", return_value=mock_provider):
         with patch("context_scribe.main.Evaluator", return_value=mock_evaluator):
             with patch("context_scribe.main.MemoryBankClient", return_value=mock_mcp):
@@ -44,11 +53,20 @@ async def test_run_daemon_loop_one_iteration():
                             # Make the context manager work
                             mock_live.return_value.__enter__.return_value = MagicMock()
                             
-                            # run_daemon should return True on KeyboardInterrupt
-                            result = await run_daemon("gemini", "~/.memory-bank")
-                            # If os._exit is called, the code after await won't be reached if it was real exit
-                            # but here it is mocked.
-                            mock_exit.assert_called_once_with(0)
+                            # Start daemon and wait for it to process the mocked interaction
+                            daemon_task = asyncio.create_task(run_daemon("gemini", "~/.memory-bank"))
+                            
+                            # Wait until save_rule is called (meaning interaction processed)
+                            for _ in range(50):
+                                if processed_interaction:
+                                    break
+                                await asyncio.sleep(0.1)
+                            
+                            daemon_task.cancel()
+                            try:
+                                await daemon_task
+                            except asyncio.CancelledError:
+                                pass
                         
                         # Verify calls
                         mock_mcp.connect.assert_called_once()

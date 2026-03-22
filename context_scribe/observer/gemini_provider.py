@@ -167,9 +167,13 @@ class GeminiProvider(BaseProvider):
                     except Exception:
                         pass
                 
+                if not self.interaction_queue:
+                    yield None
+                    time.sleep(1)
+                    continue
+                    
                 while self.interaction_queue:
                     yield self.interaction_queue.pop(0)
-                time.sleep(2)
         except KeyboardInterrupt:
             observer.stop()
         
