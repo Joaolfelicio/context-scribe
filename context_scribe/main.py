@@ -155,13 +155,13 @@ async def run_daemon(tool: str) -> bool:
                 live.update(db.generate_layout())
                 
                 # Reading bank
-                db.status = "📖 Accessing Memory Bank..."
+                db.status = f"📖 Accessing Memory Bank ({interaction.project_name})..."
                 live.update(db.generate_layout())
                 existing_global = await mcp_client.read_rules("global", "global_rules.md")
                 existing_project = await mcp_client.read_rules(interaction.project_name, "rules.md")
                 
                 # Evaluating
-                db.status = "🧠 Thinking: Extracting rules..."
+                db.status = f"🧠 Thinking: Extracting rules for {interaction.project_name}..."
                 live.update(db.generate_layout())
                 rule_output = await loop.run_in_executor(None, evaluator.evaluate_interaction, interaction, existing_global, existing_project)
                 
