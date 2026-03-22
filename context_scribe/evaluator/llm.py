@@ -58,11 +58,11 @@ INSTRUCTIONS:
 3. Output Format:
    - Output a JSON object with:
      - "scope": "GLOBAL" or "PROJECT"
-     - "description": "A very concise (3-5 words) summary of the NEW rule or update."
-     - "rules": "The NEW or UPDATED rules ONLY. Format them as Markdown (e.g., '### Style\n- Use 4 spaces'). Do not include existing rules unless you are modifying them."
-4. If NO NEW rules are identified, output exactly: NO_RULE
+     - "description": "A very concise (3-5 words) summary of the change."
+     - "rules": "The ENTIRE consolidated list of rules for that scope in Markdown."
+4. If NO changes are needed, output exactly: NO_RULE
 
-CRITICAL: **Do not repeat existing rules** unless they need to be changed. Output ONLY the JSON object or NO_RULE.
+CRITICAL: Output ONLY the JSON object or NO_RULE.
 """
         try:
             result = subprocess.run(
@@ -83,6 +83,7 @@ CRITICAL: **Do not repeat existing rules** unless they need to be changed. Outpu
             
             output = result.stdout.strip()
             
+            # Extract response text
             response_text = output
             try:
                 data = json.loads(output)
@@ -91,29 +92,44 @@ CRITICAL: **Do not repeat existing rules** unless they need to be changed. Outpu
             except json.JSONDecodeError:
                 pass
 
-            json_match = re.search(r'\{.*\}', str(response_text), re.DOTALL)
+            # Try to parse rule JSON from response text using a non-greedy match
+            # and looking for the specific keys we expect.
+            json_match = re.search(r'\{.*?"scope".*?"rules".*?\}', str(response_text), re.DOTALL)
             if json_match:
                 try:
                     rule_data = json.loads(json_match.group(0))
                     if "scope" in rule_data and "rules" in rule_data:
                         rules_raw = rule_data["rules"]
                         desc = rule_data.get("description", "Updated rules")
+                        
                         if isinstance(rules_raw, list):
                             rules_content = "\n".join([str(r) for r in rules_raw]).strip()
                         else:
                             rules_content = str(rules_raw).strip()
-                        return RuleOutput(content=rules_content, scope=rule_data["scope"].upper(), description=str(desc))
+                            
+                        # If LLM just outputted conversational noise in the 'rules' key,
+                        # check if it contains actual rules (markdown bullets or headers)
+                        if len(rules_content) > 0:
+                            return RuleOutput(
+                                content=rules_content, 
+                                scope=str(rule_data["scope"]).upper(), 
+                                description=str(desc)
+                            )
                 except json.JSONDecodeError:
                     pass
 
+            # If no JSON found, check for NO_RULE
             if "NO_RULE" in str(response_text):
                 return None
             
-            # Fallback
-            scope = "PROJECT" if "PROJECT" in str(response_text).upper() else "GLOBAL"
-            return RuleOutput(content=str(response_text), scope=scope, description="Extracted rule")
+            # ABSOLUTELY NO FALLBACK TO RAW TEXT. 
+            # If the LLM didn't give us valid JSON, we treat it as no change to avoid corruption.
+            logger.error(f"Failed to parse rule extraction from LLM response for {interaction.project_name}")
+            return None
             
         except subprocess.TimeoutExpired:
+            logger.error(f"Evaluation timed out for {interaction.project_name}")
             return None
-        except Exception:
+        except Exception as e:
+            logger.error(f"Unexpected error in Evaluator: {e}")
             return None
