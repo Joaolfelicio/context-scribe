@@ -34,8 +34,8 @@ class GeminiProvider(BaseProvider):
     def __init__(self, log_dir: str = "~/.gemini/tmp/"):
         self.log_dir = Path(os.path.expanduser(log_dir))
         self.interaction_queue = []
-        # Track processed message IDs to avoid duplicates
-        self.processed_message_ids: Dict[str, Set[str]] = {}
+        # Track processed message IDs globally across all files to avoid duplicates
+        self.global_processed_ids: Set[str] = set()
         # Track file mtimes to detect changes
         self.last_mtimes: Dict[str, float] = {}
         self._initialize_historical_logs()
@@ -58,12 +58,9 @@ class GeminiProvider(BaseProvider):
                     else:
                         session_id = "unknown"
                     
-                    msg_ids = set()
                     for msg in messages:
                         raw_msg_id = msg.get("id") or msg.get("messageId") or str(msg)
-                        msg_ids.add(f"{session_id}_{raw_msg_id}")
-                        
-                    self.processed_message_ids[str(file_path)] = msg_ids
+                        self.global_processed_ids.add(f"{session_id}_{raw_msg_id}")
             except Exception:
                 pass
 
@@ -81,8 +78,14 @@ class GeminiProvider(BaseProvider):
         # Extract project name from the directory structure
         # ~/.gemini/tmp/[project_name]/...
         try:
-            rel_path = Path(file_path).relative_to(self.log_dir)
-            project_name = rel_path.parts[0] if rel_path.parts else "global"
+            path_obj = Path(file_path)
+            rel_path = path_obj.relative_to(self.log_dir)
+            
+            # If the file is directly in the tmp dir, it's global
+            if len(rel_path.parts) == 1:
+                project_name = "global"
+            else:
+                project_name = rel_path.parts[0]
         except Exception:
             project_name = "global"
 
@@ -99,11 +102,6 @@ class GeminiProvider(BaseProvider):
                 
                 messages = self._get_messages_from_data(data)
                 
-                if str(file_path) not in self.processed_message_ids:
-                    self.processed_message_ids[str(file_path)] = set()
-                
-                processed_set = self.processed_message_ids[str(file_path)]
-                
                 if isinstance(data, dict):
                     session_id = data.get("sessionId") or data.get("id") or "unknown"
                 else:
@@ -115,9 +113,9 @@ class GeminiProvider(BaseProvider):
                     raw_msg_id = msg.get("id") or msg.get("messageId") or str(msg)
                     msg_id = f"{session_id}_{raw_msg_id}"
                     
-                    if msg_id not in processed_set:
+                    if msg_id not in self.global_processed_ids:
                         self._extract_interaction(msg, project_name)
-                        processed_set.add(msg_id)
+                        self.global_processed_ids.add(msg_id)
 
         except Exception as e:
             # Silently fail for parsing errors (e.g. partial writes)
@@ -147,6 +145,11 @@ class GeminiProvider(BaseProvider):
         else:
             content = str(raw_content)
             
+        # BREAK THE FEEDBACK LOOP: 
+        # Skip any messages that contain our internal evaluation signature
+        if "--- CONTEXT-SCRIBE-INTERNAL-EVALUATION ---" in content:
+            return
+
         if content.strip() and role == "user":
             self.interaction_queue.append(
                 Interaction(

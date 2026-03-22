@@ -2,12 +2,15 @@ import asyncio
 import os
 import sys
 from pathlib import Path
-from typing import Any, Optional, NoReturn
+from datetime import datetime
 import click
-from rich.console import Console # type: ignore
-from rich.live import Live # type: ignore
-from rich.panel import Panel # type: ignore
-from rich.text import Text # type: ignore
+from rich.console import Console
+from rich.live import Live
+from rich.panel import Panel
+from rich.text import Text
+from rich.layout import Layout
+from rich.table import Table
+from rich.spinner import Spinner
 
 from context_scribe.observer.gemini_provider import GeminiProvider
 from context_scribe.evaluator.llm import Evaluator
@@ -16,108 +19,170 @@ from context_scribe.observer.provider import Interaction, BaseProvider
 
 console: Console = Console()
 
-MASTER_RETRIEVAL_RULE: str = """
+MASTER_RETRIEVAL_RULE = """
 # Memory Bank Integration
-You have access to a persistent Memory Bank via MCP. Before beginning any task, you MUST invoke the appropriate tools (e.g. `list_projects`, `memory_bank_read`) to identify current project constraints and user preferences. Do not assume you have full context until this sync is complete.
+You have access to a persistent Memory Bank via MCP. Before beginning any task, you MUST invoke the appropriate tools (e.g. `list_projects`, `memory_bank_read`) to identify current project constraints and user preferences. 
+
+**Rule Precedence:**
+- If a project-specific rule (`rules.md` in the project folder) contradicts a global rule (`global_rules.md`), the **project-specific rule takes precedence**.
+- Do not assume you have full context until this sync is complete.
 """
 
-def bootstrap_global_config() -> None:
-    """Injects the master retrieval rule into Gemini CLI's global config."""
-    gemini_config_dir: Path = Path(os.path.expanduser("~/.gemini"))
-    gemini_config_dir.mkdir(parents=True, exist_ok=True)
-    gemini_md_path: Path = gemini_config_dir / "GEMINI.md"
+class Dashboard:
+    def __init__(self, tool: str):
+        self.tool = tool
+        self.status = "Initializing..."
+        self.last_event_time = "N/A"
+        self.update_count = 0
+        self.history = []  # List of (time, file_path) tuples
 
-    rule_exists: bool = False
+    def add_history(self, file_path: str):
+        self.update_count += 1
+        self.last_event_time = datetime.now().strftime("%H:%M:%S")
+        self.history.insert(0, (self.last_event_time, file_path))
+        if len(self.history) > 10:  # Keep last 10 updates
+            self.history.pop()
+
+    def generate_layout(self) -> Layout:
+        layout = Layout()
+        layout.split_column(
+            Layout(name="header", size=3),
+            Layout(name="body"),
+            Layout(name="footer", size=3)
+        )
+        
+        layout["body"].split_row(
+            Layout(name="status", ratio=1),
+            Layout(name="history", ratio=1)
+        )
+        
+        # Header
+        header_text = Text.assemble(
+            (" 📜 Context-Scribe ", "bold white on blue"),
+            (f" Monitoring: {self.tool} ", "bold blue on white")
+        )
+        layout["header"].update(Panel(header_text, style="blue", border_style="blue"))
+
+        # Status Panel (Left)
+        status_color = "cyan"
+        if "🤔" in self.status: status_color = "yellow"
+        elif "📖" in self.status: status_color = "blue"
+        elif "🧠" in self.status: status_color = "bright_magenta"
+        elif "📝" in self.status: status_color = "magenta"
+        elif "✅" in self.status: status_color = "green"
+
+        status_text = Text(f"\n{self.status}\n", justify="center", style=f"bold {status_color}")
+        layout["status"].update(Panel(
+            status_text,
+            title="Active Task",
+            border_style=status_color
+        ))
+
+        # History Panel (Right)
+        history_table = Table(expand=True, box=None)
+        history_table.add_column("Time", style="dim", width=10)
+        history_table.add_column("Modified File", style="cyan")
+        
+        for time, path in self.history:
+            history_table.add_row(time, path)
+            
+        layout["history"].update(Panel(
+            history_table,
+            title="Recent Modifications",
+            border_style="dim"
+        ))
+
+        # Footer
+        stats = Table.grid(expand=True)
+        stats.add_column(justify="left")
+        stats.add_column(justify="right")
+        stats.add_row(
+            Text(f" System: Active", style="green"),
+            Text(f"Total Rules Extracted: {self.update_count} ", style="bold green")
+        )
+        layout["footer"].update(Panel(stats, border_style="dim"))
+        
+        return layout
+
+def bootstrap_global_config() -> None:
+    gemini_config_dir = Path(os.path.expanduser("~/.gemini"))
+    gemini_config_dir.mkdir(parents=True, exist_ok=True)
+    gemini_md_path = gemini_config_dir / "GEMINI.md"
+
+    up_to_date = False
     if gemini_md_path.exists():
         with open(gemini_md_path, "r", encoding="utf-8") as f:
-            if "Memory Bank Integration" in f.read():
-                rule_exists = True
+            if "Rule Precedence:" in f.read():
+                up_to_date = True
 
-    if not rule_exists:
+    if not up_to_date:
         with open(gemini_md_path, "a", encoding="utf-8") as f:
             f.write(f"\n{MASTER_RETRIEVAL_RULE}\n")
-        console.print(f"[green]Bootstrapped: Injected Master Retrieval Rule into {gemini_md_path}[/green]")
-    else:
-        console.print(f"[blue]Bootstrap: Master Retrieval Rule already exists in {gemini_md_path}[/blue]")
 
 async def run_daemon(tool: str) -> bool:
     bootstrap_global_config()
+    provider = GeminiProvider() if tool == "gemini" else None
+    if not provider: return False
 
-    provider: BaseProvider
-    if tool == "gemini":
-        provider = GeminiProvider()
-    else:
-        console.print(f"[red]Unsupported tool: {tool}[/red]")
-        return False
-
-    evaluator: Evaluator = Evaluator()
-    mcp_client: MemoryBankClient = MemoryBankClient()
+    evaluator = Evaluator()
+    mcp_client = MemoryBankClient()
     
     try:
         await mcp_client.connect()
-    except Exception as e:
-        console.print(f"[bold red]Fatal Error: Could not connect to the Memory Bank MCP server.[/bold red]")
-        console.print("[red]Context-Scribe requires a working persistence layer to function. Ensure your MCP server is installed and configured correctly.[/red]")
+    except Exception:
+        console.print("[bold red]MCP Connection Failed.[/bold red]")
         os._exit(1)
 
-    console.print(f"[bold green]Context-Scribe started. Monitoring {tool} logs...[/bold green]")
-    
-    with Live(Panel("Waiting for activity...", title="Context-Scribe Status", style="blue"), refresh_per_second=4) as live:
+    db = Dashboard(tool)
+    with Live(db.generate_layout(), refresh_per_second=10, screen=True) as live:
         try:
-            loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
-            
-            # Since provider.watch() yields, we need to iterate it.
+            loop = asyncio.get_event_loop()
             watch_iter = provider.watch()
-            
+            db.status = "🔍 Watching log stream..."
+
             while True:
-                live.update(Panel(Text("[WATCH] Active file monitoring...", style="cyan"), title="Context-Scribe Status"))
-                
-                # Fetch next interaction
+                live.update(db.generate_layout())
                 interaction = await loop.run_in_executor(None, next, watch_iter)
-
-                # Fetch existing rules for conflict resolution
-                existing_global = await mcp_client.read_rules(project_name="global", file_name="global_rules.md")
-                existing_project = await mcp_client.read_rules(project_name=interaction.project_name, file_name="rules.md")
-
-                live.update(Panel(Text(f"[THINK] Evaluating interaction from {interaction.role} ({interaction.project_name})...", style="yellow"), title="Context-Scribe Status"))
-
+                
+                db.status = f"🤔 Analyzing: {interaction.project_name}"
+                live.update(db.generate_layout())
+                
+                # Reading bank
+                db.status = "📖 Accessing Memory Bank..."
+                live.update(db.generate_layout())
+                existing_global = await mcp_client.read_rules("global", "global_rules.md")
+                existing_project = await mcp_client.read_rules(interaction.project_name, "rules.md")
+                
+                # Evaluating
+                db.status = "🧠 Thinking: Extracting rules..."
+                live.update(db.generate_layout())
                 rule_output = await loop.run_in_executor(None, evaluator.evaluate_interaction, interaction, existing_global, existing_project)
-
+                
                 if rule_output:
-                    live.update(Panel(Text(f"[RESOLVE] Updating {rule_output.scope} Memory Bank...", style="magenta"), title="Context-Scribe Status"))
-
-                    # Determine destination
-                    if rule_output.scope == "GLOBAL":
-                        dest_project = "global"
-                        dest_file = "global_rules.md"
-                    else:
-                        dest_project = interaction.project_name
-                        dest_file = "rules.md"
-
-                    live.update(Panel(Text(f"[BANK] Committing to {dest_project}/{dest_file}...", style="green"), title="Context-Scribe Status"))
-
-                    result = await mcp_client.save_rule(rule_output.content, project_name=dest_project, file_name=dest_file)
-                    if hasattr(result, 'isError') and result.isError:
-                        console.print(f"\n[bold red]Failed to save rule:[/bold red] {result.content}")
-                    else:
-                        console.print(f"\n[bold green]{rule_output.scope} Memory Bank Updated Successfully.[/bold green]")
+                    dest_proj = "global" if rule_output.scope == "GLOBAL" else interaction.project_name
+                    dest_file = "global_rules.md" if rule_output.scope == "GLOBAL" else "rules.md"
+                    dest_path = f"{dest_proj}/{dest_file}"
                     
+                    db.status = f"📝 Committing: {dest_path}"
+                    live.update(db.generate_layout())
+                    await mcp_client.save_rule(rule_output.content, dest_proj, dest_file)
+                    
+                    db.add_history(dest_path)
+                    db.status = f"✅ SUCCESS: Updated {dest_path}"
+                    live.update(db.generate_layout())
+                    await asyncio.sleep(2)
+                
+                db.status = "🔍 Watching log stream..."
         except KeyboardInterrupt:
-            console.print("\n[yellow]Shutting down...[/yellow]")
-        except Exception as e:
-            console.print(f"\n[red]Error:[/red] {e}")
+            pass
         finally:
             await mcp_client.close()
-
     return True
 
 @click.command()
-@click.option('--tool', default='gemini', help='The AI tool to monitor (e.g., gemini)')
-def cli(tool: str) -> None:
-    """Context-Scribe: Persistent Secretary Daemon"""
-    success: bool = asyncio.run(run_daemon(tool))
-    if not success:
-        sys.exit(1)
+@click.option('--tool', default='gemini', help='The AI tool to monitor')
+def cli(tool):
+    asyncio.run(run_daemon(tool))
 
 if __name__ == "__main__":
     cli()
