@@ -35,14 +35,12 @@ class Dashboard:
         self.status = "Initializing..."
         self.last_event_time = "N/A"
         self.update_count = 0
-        self.history = []  # List of (time, file_path, description, absolute_path) tuples
+        self.history = []  # List of (time, file_path, description) tuples
 
     def add_history(self, file_path: str, description: str):
         self.update_count += 1
         self.last_event_time = datetime.now().strftime("%H:%M:%S")
-        # Store absolute path for terminal linking
-        abs_path = os.path.join(os.path.expanduser(self.bank_path), file_path)
-        self.history.insert(0, (self.last_event_time, file_path, description, abs_path))
+        self.history.insert(0, (self.last_event_time, file_path, description))
         if len(self.history) > 10:  # Keep last 10 updates
             self.history.pop()
 
@@ -55,11 +53,11 @@ class Dashboard:
             Layout(name="footer", size=3)
         )
         
-        # Header showing tool and bank path
+        # Header showing tool and bank path with high-contrast highlights
         header_text = Text.assemble(
             (" 📜 Context-Scribe ", "bold white on blue"),
             (f" Monitoring: {self.tool} ", "bold blue on white"),
-            (f" 📂 Bank: {self.bank_path} ", "dim italic")
+            (f" 📂 Bank: {self.bank_path} ", "bold white on cyan")
         )
         layout["header"].update(Panel(header_text, style="blue", border_style="blue"))
 
@@ -82,13 +80,11 @@ class Dashboard:
         # History Panel (Bottom)
         history_table = Table(expand=True, box=None)
         history_table.add_column("Time", style="dim", width=10)
-        history_table.add_column("Modified File (Click to Open)", style="cyan")
+        history_table.add_column("Modified File", style="cyan")
         history_table.add_column("Description", style="dim")
         
-        for time, path, desc, abs_p in self.history:
-            # Create a terminal hyperlink (OSC 8)
-            link_path = Text(path, style=f"link file://{abs_p}")
-            history_table.add_row(time, link_path, desc)
+        for time, path, desc in self.history:
+            history_table.add_row(time, path, desc)
             
         layout["history"].update(Panel(
             history_table,
@@ -195,8 +191,9 @@ async def run_daemon(tool: str, bank_path: str) -> bool:
                     await asyncio.sleep(2)
                 
                 db.status = "🔍 Watching log stream..."
-        except KeyboardInterrupt:
-            pass
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            db.status = "🛑 Stopping..."
+            live.update(db.generate_layout())
         finally:
             await mcp_client.close()
     return True
@@ -206,7 +203,10 @@ async def run_daemon(tool: str, bank_path: str) -> bool:
 @click.option('--bank-path', default='~/.memory-bank', help='Path to your Memory Bank root')
 def cli(tool, bank_path):
     """Context-Scribe: Persistent Secretary Daemon"""
-    asyncio.run(run_daemon(tool, bank_path))
+    try:
+        asyncio.run(run_daemon(tool, bank_path))
+    except KeyboardInterrupt:
+        pass
 
 if __name__ == "__main__":
     cli()

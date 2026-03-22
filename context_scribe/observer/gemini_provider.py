@@ -4,7 +4,7 @@ import shutil
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Iterator, Dict, Set, List
+from typing import Iterator, Dict, Set
 
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
@@ -33,20 +33,12 @@ class GeminiLogHandler(FileSystemEventHandler):
 class GeminiProvider(BaseProvider):
     def __init__(self, log_dir: str = "~/.gemini/tmp/"):
         self.log_dir = Path(os.path.expanduser(log_dir))
-        self.interaction_queue: List[Interaction] = []
+        self.interaction_queue = []
         # Track processed message IDs globally across all files to avoid duplicates
         self.global_processed_ids: Set[str] = set()
-        self.id_limit = 10000
         # Track file mtimes to detect changes
         self.last_mtimes: Dict[str, float] = {}
         self._initialize_historical_logs()
-
-    def _add_id(self, msg_id: str):
-        if len(self.global_processed_ids) >= self.id_limit:
-            # Simple overflow protection: clear half if limit reached
-            # In a more complex app, we'd use an OrderedDict for LRU
-            self.global_processed_ids.clear()
-        self.global_processed_ids.add(msg_id)
 
     def _initialize_historical_logs(self):
         """Skip all messages existing before the daemon starts."""
@@ -68,7 +60,7 @@ class GeminiProvider(BaseProvider):
                     
                     for msg in messages:
                         raw_msg_id = msg.get("id") or msg.get("messageId") or str(msg)
-                        self._add_id(f"{session_id}_{raw_msg_id}")
+                        self.global_processed_ids.add(f"{session_id}_{raw_msg_id}")
             except Exception:
                 pass
 
@@ -84,12 +76,9 @@ class GeminiProvider(BaseProvider):
 
     def _process_file(self, file_path: str):
         # Extract project name from the directory structure
-        # ~/.gemini/tmp/[project_name]/...
         try:
             path_obj = Path(file_path)
             rel_path = path_obj.relative_to(self.log_dir)
-            
-            # If the file is directly in the tmp dir, it's global
             if len(rel_path.parts) == 1:
                 project_name = "global"
             else:
@@ -97,17 +86,14 @@ class GeminiProvider(BaseProvider):
         except Exception:
             project_name = "global"
 
-        # Safety: copy file to avoid locking issues
         temp_path = f"{file_path}.snapshot"
         try:
             shutil.copy2(file_path, temp_path)
-            
             with open(temp_path, "r", encoding="utf-8") as f:
                 content = f.read().strip()
                 if not content:
                     return
                 data = json.loads(content)
-                
                 messages = self._get_messages_from_data(data)
                 
                 if isinstance(data, dict):
@@ -116,17 +102,13 @@ class GeminiProvider(BaseProvider):
                     session_id = "unknown"
                 
                 for msg in messages:
-                    # Message ID uniqueness is key
-                    # Combine with session_id because messageId might reset per session
                     raw_msg_id = msg.get("id") or msg.get("messageId") or str(msg)
                     msg_id = f"{session_id}_{raw_msg_id}"
                     
                     if msg_id not in self.global_processed_ids:
                         self._extract_interaction(msg, project_name)
-                        self._add_id(msg_id)
-
-        except Exception as e:
-            # Silently fail for parsing errors (e.g. partial writes)
+                        self.global_processed_ids.add(msg_id)
+        except Exception:
             pass
         finally:
             if os.path.exists(temp_path):
@@ -136,10 +118,7 @@ class GeminiProvider(BaseProvider):
                     pass
 
     def _extract_interaction(self, data: dict, project_name: str):
-        # Support both 'type' and 'role' for the message sender
         role = data.get("type") or data.get("role") or "unknown"
-        
-        # Support string content, 'message' key, or list of parts
         raw_content = data.get("content") or data.get("message") or data.get("text") or ""
         
         if isinstance(raw_content, list):
@@ -153,9 +132,7 @@ class GeminiProvider(BaseProvider):
         else:
             content = str(raw_content)
             
-        # BREAK THE FEEDBACK LOOP: 
-        # Skip any messages that contain our internal evaluation signature
-        # We use a case-insensitive check and strip whitespace to be safe
+        # BREAK THE FEEDBACK LOOP
         if "--- CONTEXT-SCRIBE-INTERNAL-EVALUATION ---" in content.upper() or "CONTEXT-SCRIBE-INTERNAL-EVALUATION" in content:
             return
 
@@ -181,7 +158,6 @@ class GeminiProvider(BaseProvider):
 
         try:
             while True:
-                # Periodic manual scan for resilience
                 for file_path in self.log_dir.glob("**/*.json"):
                     try:
                         mtime = os.path.getmtime(file_path)

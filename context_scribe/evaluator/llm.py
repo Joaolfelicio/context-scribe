@@ -124,6 +124,14 @@ CRITICAL: **Do not return rules from the other scope.** Return ONE single clean 
             if "NO_RULE" in str(response_text):
                 return None
             
+            # Fallback for non-JSON responses (robustness)
+            text_upper = str(response_text).upper()
+            if "PROJECT" in text_upper or "GLOBAL" in text_upper:
+                scope = "PROJECT" if "PROJECT" in text_upper else "GLOBAL"
+                # Try to find some content if rules are just listed
+                content = str(response_text)
+                return RuleOutput(content=content, scope=scope, description="Extracted via fallback")
+
             logger.error(f"Failed to parse rule extraction for {interaction.project_name}")
             return None
             

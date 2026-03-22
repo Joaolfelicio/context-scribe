@@ -25,7 +25,7 @@ def test_bootstrap_global_config_updates_if_outdated(tmp_path):
         assert "Rule Precedence:" in gemini_md.read_text()
 
 def test_dashboard_generate_layout():
-    db = Dashboard("gemini")
+    db = Dashboard("gemini", "~/.memory-bank")
     db.status = "✅ SUCCESS"
     layout = db.generate_layout()
     assert layout is not None

@@ -40,12 +40,15 @@ async def test_run_daemon_loop_one_iteration():
                 with patch("context_scribe.main.bootstrap_global_config"):
                     # Mock Live to avoid rich rendering logic completely
                     with patch("context_scribe.main.Live") as mock_live:
-                        # Make the context manager work
-                        mock_live.return_value.__enter__.return_value = MagicMock()
-                        
-                        # run_daemon should return True on KeyboardInterrupt
-                        result = await run_daemon("gemini")
-                        assert result is True
+                        with patch("os._exit") as mock_exit:
+                            # Make the context manager work
+                            mock_live.return_value.__enter__.return_value = MagicMock()
+                            
+                            # run_daemon should return True on KeyboardInterrupt
+                            result = await run_daemon("gemini", "~/.memory-bank")
+                            # If os._exit is called, the code after await won't be reached if it was real exit
+                            # but here it is mocked.
+                            mock_exit.assert_called_once_with(0)
                         
                         # Verify calls
                         mock_mcp.connect.assert_called_once()

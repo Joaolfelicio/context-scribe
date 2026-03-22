@@ -21,11 +21,15 @@ async def test_run_daemon_mcp_connection_failure():
                         # Ensure generate_layout returns something simple
                         mock_db_class.return_value.generate_layout.return_value = MagicMock()
                         
-                        with patch("os._exit") as mock_exit:
-                            await run_daemon("gemini")
-                            mock_exit.assert_called_once_with(1)
+                        with patch("os._exit", side_effect=SystemExit(1)) as mock_exit:
+                            with patch("context_scribe.main.Live") as mock_live:
+                                # Make the context manager work
+                                mock_live.return_value.__enter__.return_value = MagicMock()
+                                with pytest.raises(SystemExit):
+                                    await run_daemon("gemini", "~/.memory-bank")
+                                mock_exit.assert_called_once_with(1)
 
 @pytest.mark.asyncio
 async def test_run_daemon_unsupported_tool():
-    result = await run_daemon("unsupported")
+    result = await run_daemon("unsupported", "~/.memory-bank")
     assert result is False

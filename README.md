@@ -87,9 +87,12 @@ pytest --cov=context_scribe tests/
 ```
 
 ### Manual Interaction Test
+
 1.  **Start the daemon**: `context-scribe --tool gemini`
+
 2.  **Simulate an interaction**: 
     ```bash
     echo '[{"role": "user", "content": "Rule: Always use single quotes for Python strings."}]' > ~/.gemini/tmp/test_rule.json
     ```
+    
 3.  **Verify Result**: Check your configured Memory Bank folder (e.g., `~/.memory-bank/global/global_rules.md`). You should see the rule professionally enhanced and categorized.
