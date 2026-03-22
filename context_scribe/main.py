@@ -47,13 +47,9 @@ class Dashboard:
         layout = Layout()
         layout.split_column(
             Layout(name="header", size=3),
-            Layout(name="body"),
+            Layout(name="status", size=5),
+            Layout(name="history"),
             Layout(name="footer", size=3)
-        )
-        
-        layout["body"].split_row(
-            Layout(name="status", ratio=1),
-            Layout(name="history", ratio=1)
         )
         
         # Header
@@ -63,7 +59,7 @@ class Dashboard:
         )
         layout["header"].update(Panel(header_text, style="blue", border_style="blue"))
 
-        # Status Panel (Left)
+        # Status Panel (Top)
         status_color = "cyan"
         if "🤔" in self.status: status_color = "yellow"
         elif "📖" in self.status: status_color = "blue"
@@ -78,7 +74,7 @@ class Dashboard:
             border_style=status_color
         ))
 
-        # History Panel (Right)
+        # History Panel (Bottom)
         history_table = Table(expand=True, box=None)
         history_table.add_column("Time", style="dim", width=10)
         history_table.add_column("Modified File", style="cyan")
