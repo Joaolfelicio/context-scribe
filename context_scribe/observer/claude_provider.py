@@ -13,6 +13,7 @@ from typing import Iterator, Dict, Optional, Set
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
+from context_scribe.evaluator.models import INTERNAL_SIGNATURE
 from context_scribe.observer.provider import Interaction, BaseProvider
 
 logger = logging.getLogger(__name__)
@@ -153,8 +154,8 @@ class ClaudeProvider(BaseProvider):
 
         # BREAK THE FEEDBACK LOOP
         upper_content = content.upper()
-        if "CONTEXT-SCRIBE-INTERNAL-EVALUATION" in upper_content:
-            return
+        if INTERNAL_SIGNATURE in upper_content:
+            return None
 
         if content.strip() and role == "user":
             self.interaction_queue.append(

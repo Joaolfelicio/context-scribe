@@ -9,6 +9,7 @@ from typing import Iterator, Dict, Set
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
+from context_scribe.evaluator.models import INTERNAL_SIGNATURE
 from context_scribe.observer.provider import Interaction, BaseProvider
 
 
@@ -133,8 +134,8 @@ class GeminiProvider(BaseProvider):
             content = str(raw_content)
             
         # BREAK THE FEEDBACK LOOP
-        if "--- CONTEXT-SCRIBE-INTERNAL-EVALUATION ---" in content.upper() or "CONTEXT-SCRIBE-INTERNAL-EVALUATION" in content:
-            return
+        if INTERNAL_SIGNATURE in content.upper():
+            return None
 
         if content.strip() and role == "user":
             self.interaction_queue.append(

@@ -1,5 +1,6 @@
 import json
 from context_scribe.observer.copilot_provider import CopilotProvider
+from context_scribe.evaluator.models import INTERNAL_SIGNATURE
 
 
 def test_get_messages_from_data_turns_format():
@@ -54,7 +55,7 @@ def test_extract_interaction_internal_loop_filter():
     # Should skip internal evaluation messages
     provider._extract_interaction({
         "role": "user",
-        "content": "--- CONTEXT-SCRIBE-INTERNAL-EVALUATION ---\nDo something"
+        "content": f"{INTERNAL_SIGNATURE}\nDo something"
     }, "test-project")
     assert len(provider.interaction_queue) == 0
 

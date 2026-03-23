@@ -2,6 +2,7 @@ import json
 import os
 from pathlib import Path
 from context_scribe.observer.gemini_provider import GeminiProvider
+from context_scribe.evaluator.models import INTERNAL_SIGNATURE
 
 def test_get_messages_from_data_dict_messages():
     provider = GeminiProvider()
@@ -33,7 +34,7 @@ def test_extract_interaction_internal_loop_filter():
     provider = GeminiProvider()
     # Should skip internal evaluation messages
     provider._extract_interaction({
-        "type": "user", 
-        "message": "--- CONTEXT-SCRIBE-INTERNAL-EVALUATION ---\nDo something"
+        "type": "user",
+        "message": f"{INTERNAL_SIGNATURE}\nDo something"
     }, "test-project")
     assert len(provider.interaction_queue) == 0
