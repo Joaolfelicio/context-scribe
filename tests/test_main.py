@@ -1,7 +1,5 @@
-import os
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-from context_scribe.main import bootstrap_global_config, MASTER_RETRIEVAL_RULE, Dashboard
+from unittest.mock import patch
+from context_scribe.main import bootstrap_global_config, bootstrap_copilot_config, Dashboard
 
 def test_bootstrap_global_config_creates_file(tmp_path):
     # Mock home directory to our temp path
@@ -23,6 +21,14 @@ def test_bootstrap_global_config_updates_if_outdated(tmp_path):
         bootstrap_global_config()
         # It should append the new rule if "Rule Precedence:" is missing
         assert "Rule Precedence:" in gemini_md.read_text()
+
+def test_bootstrap_copilot_config_creates_file(tmp_path):
+    with patch("os.path.expanduser") as mock_expand:
+        mock_expand.side_effect = lambda x: x.replace("~", str(tmp_path))
+        bootstrap_copilot_config()
+        instructions_md = tmp_path / ".config" / "github-copilot" / "instructions.md"
+        assert instructions_md.exists()
+        assert "Memory Bank Integration" in instructions_md.read_text()
 
 def test_dashboard_generate_layout():
     db = Dashboard("gemini", "~/.memory-bank")
