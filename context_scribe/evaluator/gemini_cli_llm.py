@@ -20,15 +20,15 @@ class GeminiCliEvaluator(BaseEvaluator):
             [
                 "gemini", 
                 "--model", "gemini-2.5-flash-lite",
-                "--extensions", "",
-                "--allowed-mcp-server-names", "",
-                "--prompt", prompt, 
+                "--prompt", "", 
                 "--output-format", "json"
             ], 
+            input=prompt,
             capture_output=True, 
             text=True,
             check=False,
-            stdin=subprocess.DEVNULL,
             timeout=120
         )
+        if result.returncode != 0:
+            logger.debug(f"Gemini CLI error (code {result.returncode}): {result.stderr}")
         return result.stdout.strip()

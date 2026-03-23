@@ -1,6 +1,5 @@
 import asyncio
 import os
-import sys
 from pathlib import Path
 from datetime import datetime
 import click
@@ -12,14 +11,12 @@ from rich.layout import Layout
 from rich.table import Table
 from rich.spinner import Spinner
 
-from context_scribe.observer.gemini_provider import GeminiProvider
+from context_scribe.observer.gemini_cli_provider import GeminiProvider
 from context_scribe.observer.copilot_provider import CopilotProvider
 from context_scribe.observer.claude_provider import ClaudeProvider
 from context_scribe.evaluator.gemini_cli_llm import GeminiCliEvaluator
 from context_scribe.evaluator.claude_llm import ClaudeEvaluator
 from context_scribe.bridge.mcp_client import MemoryBankClient
-from context_scribe.models.interaction import Interaction
-from context_scribe.observer.base_provider import BaseProvider
 
 console: Console = Console()
 
