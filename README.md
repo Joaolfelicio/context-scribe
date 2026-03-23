@@ -36,14 +36,18 @@ Context-Scribe operates on an **Observer-Evaluator-Bridge** pattern. See the [fu
 
 Context-Scribe uses a **Provider Pattern** to support multiple AI tools:
 
-*   **[Gemini CLI](https://github.com/google/gemini-cli)**: Monitors `~/.gemini/tmp/` for session logs.
-*   **[GitHub Copilot](https://github.com/features/copilot)**: Monitors `~/.config/github-copilot/chat/` for conversation logs. Requires VS Code with the GitHub Copilot Chat extension.
+| Tool | Provider | Log Format | Status |
+|------|----------|------------|--------|
+| [Gemini CLI](https://github.com/google/gemini-cli) | `GeminiProvider` | JSON (`~/.gemini/tmp/`) | Supported |
+| [GitHub Copilot](https://github.com/features/copilot) | `CopilotProvider` | JSON (`~/.config/github-copilot/chat/`) | Supported |
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `ClaudeProvider` | JSONL (`~/.claude/projects/`) | Supported |
 
 ## 📋 Prerequisites
 
 *   **Python 3.10+**
-*   **Gemini CLI**: The daemon uses your local `gemini` CLI installation for headless evaluation.
-*   **GitHub Copilot** (optional): VS Code with the GitHub Copilot Chat extension installed, if using the `copilot` provider.
+*   **Gemini CLI**: Required when using `--tool gemini`. The daemon uses your local `gemini` CLI installation for headless evaluation.
+*   **GitHub Copilot** (optional): VS Code with the GitHub Copilot Chat extension installed, if using `--tool copilot`.
+*   **Claude Code CLI**: Required when using `--tool claude`. Install from the [Claude Code documentation](https://docs.anthropic.com/en/docs/claude-code).
 *   **Memory Bank MCP**: Your AI tool **must** have the `@allpepper/memory-bank-mcp` server configured.
 
 ## 🛠️ Installation & Setup
@@ -66,7 +70,11 @@ Context-Scribe uses a **Provider Pattern** to support multiple AI tools:
 ### 1. Simple Mode (Recommended)
 Start the daemon using the default Memory Bank location (`~/.memory-bank`):
 ```bash
+# Monitor Gemini CLI sessions
 context-scribe --tool gemini
+
+# Monitor Claude Code sessions
+context-scribe --tool claude
 ```
 
 For GitHub Copilot:

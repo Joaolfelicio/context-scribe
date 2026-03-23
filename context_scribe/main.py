@@ -14,7 +14,9 @@ from rich.spinner import Spinner
 
 from context_scribe.observer.gemini_provider import GeminiProvider
 from context_scribe.observer.copilot_provider import CopilotProvider
+from context_scribe.observer.claude_provider import ClaudeProvider
 from context_scribe.evaluator.llm import Evaluator
+from context_scribe.evaluator.claude_llm import ClaudeEvaluator
 from context_scribe.bridge.mcp_client import MemoryBankClient
 from context_scribe.observer.provider import Interaction, BaseProvider
 
@@ -141,6 +143,25 @@ def bootstrap_copilot_config() -> None:
         with open(instructions_path, "a", encoding="utf-8") as f:
             f.write(f"\n{MASTER_RETRIEVAL_RULE}\n")
 
+def bootstrap_claude_config() -> None:
+    """Injects the master retrieval rule into Claude Code's global config."""
+    config_path = os.path.expanduser("~/.claude")
+    claude_config_dir: Path = Path(config_path)
+    claude_config_dir.mkdir(parents=True, exist_ok=True)
+    claude_md_path: Path = claude_config_dir / "CLAUDE.md"
+
+    rule_up_to_date = False
+    if claude_md_path.exists():
+        with open(claude_md_path, "r", encoding="utf-8") as f:
+            content = f.read()
+            if "Rule Precedence:" in content:
+                rule_up_to_date = True
+
+    if not rule_up_to_date:
+        with open(claude_md_path, "a", encoding="utf-8") as f:
+            f.write(f"\n{MASTER_RETRIEVAL_RULE}\n")
+
+
 async def run_daemon(tool: str, bank_path: str) -> bool:
     if tool == "gemini":
         bootstrap_global_config()
@@ -148,11 +169,14 @@ async def run_daemon(tool: str, bank_path: str) -> bool:
     elif tool == "copilot":
         bootstrap_copilot_config()
         provider = CopilotProvider()
+    elif tool == "claude":
+        bootstrap_claude_config()
+        provider = ClaudeProvider()
     else:
         provider = None
     if not provider: return False
 
-    evaluator = Evaluator()
+    evaluator = ClaudeEvaluator() if tool == "claude" else Evaluator()
     mcp_client = MemoryBankClient(bank_path=bank_path)
     
     try:
@@ -226,7 +250,7 @@ async def run_daemon(tool: str, bank_path: str) -> bool:
     return True
 
 @click.command()
-@click.option('--tool', default='gemini', help='The AI tool to monitor')
+@click.option('--tool', default='gemini', type=click.Choice(['gemini', 'copilot', 'claude']), help='The AI tool to monitor')
 @click.option('--bank-path', default='~/.memory-bank', help='Path to your Memory Bank root')
 def cli(tool, bank_path):
     """Context-Scribe: Persistent Secretary Daemon"""

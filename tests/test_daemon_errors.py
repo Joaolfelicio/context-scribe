@@ -29,7 +29,12 @@ async def test_run_daemon_mcp_connection_failure():
                                     await run_daemon("gemini", "~/.memory-bank")
                                 mock_exit.assert_called_once_with(1)
 
-@pytest.mark.asyncio
-async def test_run_daemon_unsupported_tool():
-    result = await run_daemon("unsupported", "~/.memory-bank")
-    assert result is False
+def test_cli_rejects_unsupported_tool():
+    """click.Choice validation rejects unsupported tool values."""
+    from click.testing import CliRunner
+    from context_scribe.main import cli
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--tool", "unsupported"])
+    assert result.exit_code != 0
+    assert "Invalid value" in result.output or "invalid choice" in result.output.lower()
