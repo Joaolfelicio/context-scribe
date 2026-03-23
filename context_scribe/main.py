@@ -250,7 +250,7 @@ async def run_daemon(tool: str, bank_path: str) -> bool:
     return True
 
 @click.command()
-@click.option('--tool', default='gemini', type=click.Choice(['gemini', 'claude']), help='The AI tool to monitor')
+@click.option('--tool', default='gemini', type=click.Choice(['gemini', 'copilot', 'claude']), help='The AI tool to monitor')
 @click.option('--bank-path', default='~/.memory-bank', help='Path to your Memory Bank root')
 def cli(tool, bank_path):
     """Context-Scribe: Persistent Secretary Daemon"""
