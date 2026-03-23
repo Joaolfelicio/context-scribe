@@ -134,7 +134,7 @@ def bootstrap_copilot_config() -> None:
     if instructions_path.exists():
         with open(instructions_path, "r", encoding="utf-8") as f:
             content = f.read()
-            if "Rule Precedence:" in content:
+            if "# Memory Bank Integration" in content:
                 rule_up_to_date = True
 
     if not rule_up_to_date:

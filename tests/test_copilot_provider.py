@@ -1,7 +1,4 @@
 import json
-import os
-from pathlib import Path
-from unittest.mock import patch
 from context_scribe.observer.copilot_provider import CopilotProvider
 
 

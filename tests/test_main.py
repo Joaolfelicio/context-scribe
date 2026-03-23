@@ -1,7 +1,5 @@
-import os
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-from context_scribe.main import bootstrap_global_config, bootstrap_copilot_config, MASTER_RETRIEVAL_RULE, Dashboard
+from unittest.mock import patch
+from context_scribe.main import bootstrap_global_config, bootstrap_copilot_config, Dashboard
 
 def test_bootstrap_global_config_creates_file(tmp_path):
     # Mock home directory to our temp path
