@@ -1,6 +1,6 @@
 import json
 from context_scribe.observer.claude_provider import ClaudeProvider
-from context_scribe.evaluator.models import INTERNAL_SIGNATURE
+from context_scribe.models.evaluator_models import INTERNAL_SIGNATURE
 
 
 def test_get_messages_from_file_jsonl_format(tmp_path):

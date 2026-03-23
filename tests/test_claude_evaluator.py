@@ -2,7 +2,7 @@ import json
 from unittest.mock import MagicMock, patch
 import subprocess
 from context_scribe.evaluator.claude_llm import ClaudeEvaluator
-from context_scribe.observer.provider import Interaction
+from context_scribe.models.interaction import Interaction
 
 
 def test_claude_evaluator_no_rule():

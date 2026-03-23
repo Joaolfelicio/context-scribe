@@ -1,6 +1,6 @@
 import json
 from context_scribe.observer.copilot_provider import CopilotProvider
-from context_scribe.evaluator.models import INTERNAL_SIGNATURE
+from context_scribe.models.evaluator_models import INTERNAL_SIGNATURE
 
 
 def test_get_messages_from_data_turns_format():

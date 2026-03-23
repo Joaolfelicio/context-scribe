@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 from context_scribe.evaluator.gemini_cli_llm import GeminiCliEvaluator
-from context_scribe.observer.provider import Interaction
+from context_scribe.models.interaction import Interaction
 
 def test_evaluator_malformed_json_fallback():
     evaluator = GeminiCliEvaluator()

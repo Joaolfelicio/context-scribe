@@ -2,7 +2,7 @@ import json
 import os
 from pathlib import Path
 from context_scribe.observer.gemini_provider import GeminiProvider
-from context_scribe.evaluator.models import INTERNAL_SIGNATURE
+from context_scribe.models.evaluator_models import INTERNAL_SIGNATURE
 
 def test_extract_interaction_user_filter():
     provider = GeminiProvider()

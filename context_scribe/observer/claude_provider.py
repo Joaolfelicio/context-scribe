@@ -4,8 +4,9 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-from context_scribe.evaluator.models import INTERNAL_SIGNATURE
-from context_scribe.observer.base_provider import Interaction, BaseProvider
+from context_scribe.models.evaluator_models import INTERNAL_SIGNATURE
+from context_scribe.models.interaction import Interaction
+from context_scribe.observer.base_provider import BaseProvider
 
 logger = logging.getLogger(__name__)
 

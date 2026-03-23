@@ -1,3 +1,4 @@
+from context_scribe.models.interaction import Interaction
 import logging
 import os
 import shutil
@@ -13,17 +14,10 @@ from typing import Iterator, Optional, Dict, Set
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-from context_scribe.evaluator.models import INTERNAL_SIGNATURE
+from context_scribe.models.evaluator_models import INTERNAL_SIGNATURE
 
 logger = logging.getLogger(__name__)
 
-@dataclass
-class Interaction:
-    timestamp: datetime
-    role: str  # "user" or "agent"
-    content: str
-    project_name: str = "global"
-    metadata: Optional[dict] = None
 
 
 class GenericLogHandler(FileSystemEventHandler):

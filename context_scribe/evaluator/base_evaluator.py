@@ -6,8 +6,8 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional
 
-from context_scribe.observer.base_provider import Interaction
-from context_scribe.evaluator.models import RuleOutput, INTERNAL_SIGNATURE
+from context_scribe.models.interaction import Interaction
+from context_scribe.models.evaluator_models import RuleOutput, INTERNAL_SIGNATURE
 
 logger = logging.getLogger(__name__)
 

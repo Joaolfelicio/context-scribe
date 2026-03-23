@@ -2,7 +2,7 @@ import json
 from unittest.mock import MagicMock, patch
 import subprocess
 from context_scribe.evaluator.gemini_cli_llm import GeminiCliEvaluator
-from context_scribe.observer.provider import Interaction
+from context_scribe.models.interaction import Interaction
 
 def test_evaluator_no_rule():
     evaluator = GeminiCliEvaluator()
