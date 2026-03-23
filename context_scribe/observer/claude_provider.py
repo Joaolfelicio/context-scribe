@@ -1,16 +1,21 @@
 import hashlib
 import json
+import logging
 import os
 import shutil
+import tempfile
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Iterator, Dict, Set
+from typing import Iterator, Dict, Optional, Set
 
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
 from context_scribe.observer.provider import Interaction, BaseProvider
+
+logger = logging.getLogger(__name__)
 
 
 class ClaudeLogHandler(FileSystemEventHandler):
@@ -39,6 +44,7 @@ class ClaudeProvider(BaseProvider):
         self.global_processed_ids: Set[str] = set()
         # Track file mtimes to detect changes
         self.last_mtimes: Dict[str, float] = {}
+        self._lock = threading.Lock()
         self._initialize_historical_logs()
 
     def _initialize_historical_logs(self):
@@ -55,7 +61,7 @@ class ClaudeProvider(BaseProvider):
                     msg_id = self._make_msg_id(str(file_path), line_num, msg)
                     self.global_processed_ids.add(msg_id)
             except Exception:
-                pass
+                logger.debug("Failed to initialize historical log: %s", file_path)
 
     def _make_msg_id(self, file_path: str, line_num: int, msg: dict) -> str:
         """Create a unique ID for a message using line number and content hash."""
@@ -87,41 +93,43 @@ class ClaudeProvider(BaseProvider):
                     except json.JSONDecodeError:
                         continue
         except Exception:
-            pass
+            logger.debug("Failed to read messages from file: %s", file_path)
         return messages
 
     def _process_file(self, file_path: str):
-        # Extract project name from the directory structure
-        try:
-            path_obj = Path(file_path)
-            rel_path = path_obj.relative_to(self.log_dir)
-            if len(rel_path.parts) <= 1:
+        with self._lock:
+            # Extract project name from the directory structure
+            try:
+                path_obj = Path(file_path)
+                rel_path = path_obj.relative_to(self.log_dir)
+                if len(rel_path.parts) <= 1:
+                    project_name = "global"
+                else:
+                    # Use the directory components (excluding the filename) as project name
+                    project_name = str(Path(*rel_path.parts[:-1]))
+            except Exception:
                 project_name = "global"
-            else:
-                # Use the directory components (excluding the filename) as project name
-                project_name = str(Path(*rel_path.parts[:-1]))
-        except Exception:
-            project_name = "global"
 
-        temp_path = f"{file_path}.snapshot"
-        try:
-            shutil.copy2(file_path, temp_path)
-            messages = self._get_messages_from_file(temp_path)
+            fd, temp_path = tempfile.mkstemp(suffix=".snapshot")
+            os.close(fd)
+            try:
+                shutil.copy2(file_path, temp_path)
+                messages = self._get_messages_from_file(temp_path)
 
-            for line_num, msg in messages:
-                msg_id = self._make_msg_id(file_path, line_num, msg)
+                for line_num, msg in messages:
+                    msg_id = self._make_msg_id(file_path, line_num, msg)
 
-                if msg_id not in self.global_processed_ids:
-                    self._extract_interaction(msg, project_name)
-                    self.global_processed_ids.add(msg_id)
-        except Exception:
-            pass
-        finally:
-            if os.path.exists(temp_path):
-                try:
-                    os.remove(temp_path)
-                except Exception:
-                    pass
+                    if msg_id not in self.global_processed_ids:
+                        self._extract_interaction(msg, project_name)
+                        self.global_processed_ids.add(msg_id)
+            except Exception:
+                logger.debug("Failed to process file: %s", file_path)
+            finally:
+                if os.path.exists(temp_path):
+                    try:
+                        os.remove(temp_path)
+                    except Exception:
+                        logger.debug("Failed to remove temp file: %s", temp_path)
 
     def _extract_interaction(self, data: dict, project_name: str):
         role = data.get("role") or data.get("type") or "unknown"
@@ -144,7 +152,8 @@ class ClaudeProvider(BaseProvider):
             content = str(raw_content)
 
         # BREAK THE FEEDBACK LOOP
-        if "--- CONTEXT-SCRIBE-INTERNAL-EVALUATION ---" in content.upper() or "CONTEXT-SCRIBE-INTERNAL-EVALUATION" in content:
+        upper_content = content.upper()
+        if "CONTEXT-SCRIBE-INTERNAL-EVALUATION" in upper_content:
             return
 
         if content.strip() and role == "user":
@@ -158,7 +167,7 @@ class ClaudeProvider(BaseProvider):
                 )
             )
 
-    def watch(self) -> Iterator[Interaction]:
+    def watch(self) -> Iterator[Optional[Interaction]]:
         if not self.log_dir.exists():
             self.log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -176,7 +185,7 @@ class ClaudeProvider(BaseProvider):
                             self.last_mtimes[str(file_path)] = mtime
                             self._process_file(str(file_path))
                     except Exception:
-                        pass
+                        logger.debug("Failed to check file mtime: %s", file_path)
 
                 if not self.interaction_queue:
                     yield None
@@ -185,7 +194,6 @@ class ClaudeProvider(BaseProvider):
 
                 while self.interaction_queue:
                     yield self.interaction_queue.pop(0)
-        except KeyboardInterrupt:
+        finally:
             observer.stop()
-
-        observer.join()
+            observer.join()

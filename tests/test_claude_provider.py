@@ -1,7 +1,4 @@
 import json
-import os
-from pathlib import Path
-from unittest.mock import patch
 from context_scribe.observer.claude_provider import ClaudeProvider
 
 
@@ -106,10 +103,10 @@ def test_extract_interaction_internal_loop_filter():
     }, "test-project")
     assert len(provider.interaction_queue) == 0
 
-    # Also test the non-uppercased variant
+    # Also test mixed-case variant (case-insensitive filter)
     provider._extract_interaction({
         "role": "user",
-        "content": "CONTEXT-SCRIBE-INTERNAL-EVALUATION"
+        "content": "--- Context-Scribe-Internal-Evaluation ---\nDo something"
     }, "test-project")
     assert len(provider.interaction_queue) == 0
 
