@@ -9,7 +9,7 @@ from context_scribe.observer.base_provider import BaseProvider
 
 logger = logging.getLogger(__name__)
 
-class GeminiProvider(BaseProvider):
+class GeminiCliProvider(BaseProvider):
     def __init__(self, log_dir: str = "~/.gemini/tmp/"):
         super().__init__(log_dir=log_dir, file_extension=".json")
         self._initialize_historical_logs()

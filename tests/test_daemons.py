@@ -5,7 +5,7 @@ from context_scribe.main import run_daemon
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("tool, provider_class, evaluator_class, bootstrap_func", [
-    ("gemini-cli", "GeminiProvider", "GeminiCliEvaluator", "bootstrap_global_config"),
+    ("gemini-cli", "GeminiCliProvider", "GeminiCliEvaluator", "bootstrap_global_config"),
     ("copilot", "CopilotProvider", "GeminiCliEvaluator", "bootstrap_copilot_config"),
     ("claude", "ClaudeProvider", "ClaudeEvaluator", "bootstrap_claude_config"),
 ])

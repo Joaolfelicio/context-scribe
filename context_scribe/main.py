@@ -11,7 +11,7 @@ from rich.layout import Layout
 from rich.table import Table
 from rich.spinner import Spinner
 
-from context_scribe.observer.gemini_cli_provider import GeminiProvider
+from context_scribe.observer.gemini_cli_provider import GeminiCliProvider
 from context_scribe.observer.copilot_provider import CopilotProvider
 from context_scribe.observer.claude_provider import ClaudeProvider
 from context_scribe.evaluator.gemini_cli_llm import GeminiCliEvaluator
@@ -163,7 +163,7 @@ def bootstrap_claude_config() -> None:
 async def run_daemon(tool: str, bank_path: str) -> bool:
     if tool == "gemini-cli":
         bootstrap_global_config()
-        provider = GeminiProvider()
+        provider = GeminiCliProvider()
     elif tool == "copilot":
         bootstrap_copilot_config()
         provider = CopilotProvider()

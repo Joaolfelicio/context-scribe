@@ -1,11 +1,11 @@
 import json
 import os
 from pathlib import Path
-from context_scribe.observer.gemini_provider import GeminiProvider
+from context_scribe.observer.gemini_cli_provider import GeminiCliProvider
 from context_scribe.models.evaluator_models import INTERNAL_SIGNATURE
 
 def test_extract_interaction_user_filter():
-    provider = GeminiProvider()
+    provider = GeminiCliProvider()
     # User message should be added
     provider._extract_interaction({"type": "user", "message": "hello"}, "test-project")
     assert len(provider.interaction_queue) == 1
@@ -17,7 +17,7 @@ def test_extract_interaction_user_filter():
     assert len(provider.interaction_queue) == 1
 
 def test_extract_interaction_internal_loop_filter():
-    provider = GeminiProvider()
+    provider = GeminiCliProvider()
     # Should skip internal evaluation messages
     provider._extract_interaction({
         "type": "user",
