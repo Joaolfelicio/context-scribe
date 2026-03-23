@@ -3,7 +3,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from context_scribe.main import run_daemon
 from context_scribe.observer.provider import Interaction
-from context_scribe.evaluator.llm import RuleOutput
+from context_scribe.evaluator.models import RuleOutput
 
 
 @pytest.mark.asyncio

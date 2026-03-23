@@ -3,9 +3,10 @@ import logging
 from typing import Optional
 import json
 import re
+from pathlib import Path
 
 from context_scribe.observer.provider import Interaction
-from context_scribe.evaluator.llm import RuleOutput, INTERNAL_SIGNATURE
+from context_scribe.evaluator.models import RuleOutput, INTERNAL_SIGNATURE
 
 logger = logging.getLogger(__name__)
 
@@ -19,49 +20,19 @@ class ClaudeEvaluator:
         except (subprocess.CalledProcessError, FileNotFoundError):
             logger.warning("Claude Code CLI not found.")
 
+        # Load the prompt template
+        template_path = Path(__file__).parent / "prompt_template.md"
+        with open(template_path, "r", encoding="utf-8") as f:
+            self.prompt_template = f.read()
+
     def evaluate_interaction(self, interaction: Interaction, existing_global: str = "", existing_project: str = "") -> Optional[RuleOutput]:
-        prompt = f"""{INTERNAL_SIGNATURE}
-You are a 'Persistent Secretary' for an AI agent. Your job is to read user-agent chat logs
-and extract long-term behavioral rules, project constraints, or user preferences.
-
-CURRENT PROJECT NAME: {interaction.project_name}
-
-EXISTING GLOBAL RULES:
-'''
-{existing_global}
-'''
-
-EXISTING PROJECT RULES ({interaction.project_name}):
-'''
-{existing_project}
-'''
-
-LATEST USER INTERACTION TO ANALYZE:
-'''
-{interaction.content}
-'''
-
-INSTRUCTIONS:
-1. Categorize the rule with a strict **"Global-Unless-Proven-Local"** policy:
-   - **GLOBAL (DEFAULT)**: General preferences applying universally.
-   - **PROJECT (EXCEPTION)**: Rules unique to "{interaction.project_name}" or explicitly restricted by the user.
-2. Rule Hierarchy & Updates (CRITICAL):
-   - If the rule is GLOBAL: Merge it ONLY into the **EXISTING GLOBAL RULES** list.
-   - If the rule is PROJECT: Merge it ONLY into the **EXISTING PROJECT RULES** list.
-   - **Exclusive Scope**: When outputting rules for a scope, **DO NOT** include rules from the other scope.
-   - **Preservation Mandate**: You are FORBIDDEN from autonomously deleting rules or deduplicating by moving them between scopes. However, if a new user instruction directly CONTRADICTS an existing rule, you MUST replace the old rule with the new one (**New-Trumps-Old**).
-   - **NEVER** mix global rules into the project list, or vice versa.
-3. Rule Enhancement:
-   - Professionalize slang and add concrete examples.
-   - Ensure rules are phrased as clear directives.
-4. Output Format:
-   - Output a JSON object with:
-     - "scope": "GLOBAL" or "PROJECT"
-     - "description": "A very concise summary of the change."
-     - "rules": "The FULL consolidated list for the CHOSEN SCOPE ONLY, organized into logical Markdown categories (e.g., # Style, # Architecture, # Workflow, etc.). Use clean bullet points."
-5. If NO changes are needed, output exactly: NO_RULE
-
-CRITICAL: **Do not return rules from the other scope.** Return ONE single clean list for the determined scope. Output ONLY the JSON object or NO_RULE."""
+        prompt = self.prompt_template.format(
+            internal_signature=INTERNAL_SIGNATURE,
+            project_name=interaction.project_name,
+            existing_global=existing_global,
+            existing_project=existing_project,
+            content=interaction.content
+        )
 
         try:
             result = subprocess.run(

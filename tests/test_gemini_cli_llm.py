@@ -1,11 +1,11 @@
 import json
 from unittest.mock import MagicMock, patch
 import subprocess
-from context_scribe.evaluator.llm import Evaluator
+from context_scribe.evaluator.gemini_cli_llm import GeminiCliEvaluator
 from context_scribe.observer.provider import Interaction
 
 def test_evaluator_no_rule():
-    evaluator = Evaluator()
+    evaluator = GeminiCliEvaluator()
     mock_interaction = Interaction(timestamp=None, role="user", content="hello", project_name="test")
     
     with patch("subprocess.run") as mock_run:
@@ -17,7 +17,7 @@ def test_evaluator_no_rule():
         assert result is None
 
 def test_evaluator_extract_rule_json():
-    evaluator = Evaluator()
+    evaluator = GeminiCliEvaluator()
     mock_interaction = Interaction(timestamp=None, role="user", content="Always use tabs", project_name="test")
     
     with patch("subprocess.run") as mock_run:
@@ -30,7 +30,7 @@ def test_evaluator_extract_rule_json():
         assert result.content == "- Always use tabs"
 
 def test_evaluator_list_format_handling():
-    evaluator = Evaluator()
+    evaluator = GeminiCliEvaluator()
     mock_interaction = Interaction(timestamp=None, role="user", content="Rules", project_name="test")
     
     with patch("subprocess.run") as mock_run:
@@ -43,7 +43,7 @@ def test_evaluator_list_format_handling():
         assert "Rule 1\nRule 2" in result.content
 
 def test_evaluator_timeout_handling():
-    evaluator = Evaluator()
+    evaluator = GeminiCliEvaluator()
     mock_interaction = Interaction(timestamp=None, role="user", content="Slow", project_name="test")
     
     with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(["cmd"], 120)):

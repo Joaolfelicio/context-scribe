@@ -15,7 +15,7 @@ from rich.spinner import Spinner
 from context_scribe.observer.gemini_provider import GeminiProvider
 from context_scribe.observer.copilot_provider import CopilotProvider
 from context_scribe.observer.claude_provider import ClaudeProvider
-from context_scribe.evaluator.llm import Evaluator
+from context_scribe.evaluator.gemini_cli_llm import GeminiCliEvaluator
 from context_scribe.evaluator.claude_llm import ClaudeEvaluator
 from context_scribe.bridge.mcp_client import MemoryBankClient
 from context_scribe.observer.provider import Interaction, BaseProvider
@@ -176,7 +176,7 @@ async def run_daemon(tool: str, bank_path: str) -> bool:
         provider = None
     if not provider: return False
 
-    evaluator = ClaudeEvaluator() if tool == "claude" else Evaluator()
+    evaluator = ClaudeEvaluator() if tool == "claude" else GeminiCliEvaluator()
     mcp_client = MemoryBankClient(bank_path=bank_path)
     
     try:

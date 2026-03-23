@@ -3,7 +3,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from context_scribe.main import run_daemon
 from context_scribe.observer.provider import Interaction
-from context_scribe.evaluator.llm import RuleOutput
+from context_scribe.evaluator.models import RuleOutput
 
 @pytest.mark.asyncio
 async def test_run_daemon_loop_one_iteration():
@@ -44,7 +44,7 @@ async def test_run_daemon_loop_one_iteration():
     mock_mcp.save_rule.side_effect = side_effect
 
     with patch("context_scribe.main.GeminiProvider", return_value=mock_provider):
-        with patch("context_scribe.main.Evaluator", return_value=mock_evaluator):
+        with patch("context_scribe.main.GeminiCliEvaluator", return_value=mock_evaluator):
             with patch("context_scribe.main.MemoryBankClient", return_value=mock_mcp):
                 with patch("context_scribe.main.bootstrap_global_config"):
                     # Mock Live to avoid rich rendering logic completely
