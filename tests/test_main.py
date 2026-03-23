@@ -1,5 +1,5 @@
 from unittest.mock import patch
-from context_scribe.main import bootstrap_global_config, bootstrap_copilot_config, Dashboard
+from context_scribe.main import bootstrap_global_config, bootstrap_copilot_config, bootstrap_claude_config, Dashboard
 
 def test_bootstrap_global_config_creates_file(tmp_path):
     # Mock home directory to our temp path
@@ -29,6 +29,38 @@ def test_bootstrap_copilot_config_creates_file(tmp_path):
         instructions_md = tmp_path / ".config" / "github-copilot" / "instructions.md"
         assert instructions_md.exists()
         assert "Memory Bank Integration" in instructions_md.read_text()
+
+def test_bootstrap_claude_config_creates_file(tmp_path):
+    with patch("os.path.expanduser") as mock_expand:
+        mock_expand.side_effect = lambda x: x.replace("~", str(tmp_path))
+        bootstrap_claude_config()
+        claude_md = tmp_path / ".claude" / "CLAUDE.md"
+        assert claude_md.exists()
+        assert "Memory Bank Integration" in claude_md.read_text()
+
+def test_bootstrap_claude_config_updates_if_outdated(tmp_path):
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir(parents=True)
+    claude_md = claude_dir / "CLAUDE.md"
+    claude_md.write_text("Old rule without precedence")
+
+    with patch("os.path.expanduser") as mock_expand:
+        mock_expand.side_effect = lambda x: x.replace("~", str(tmp_path))
+        bootstrap_claude_config()
+        assert "Rule Precedence:" in claude_md.read_text()
+
+def test_bootstrap_claude_config_skips_if_up_to_date(tmp_path):
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir(parents=True)
+    claude_md = claude_dir / "CLAUDE.md"
+    claude_md.write_text("Existing content with Rule Precedence: already present")
+
+    with patch("os.path.expanduser") as mock_expand:
+        mock_expand.side_effect = lambda x: x.replace("~", str(tmp_path))
+        bootstrap_claude_config()
+        content = claude_md.read_text()
+        assert content.count("Rule Precedence:") == 1
+
 
 def test_dashboard_generate_layout():
     db = Dashboard("gemini", "~/.memory-bank")
