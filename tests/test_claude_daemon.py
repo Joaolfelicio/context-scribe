@@ -45,7 +45,7 @@ async def test_run_daemon_claude_tool():
     mock_mcp.save_rule.side_effect = side_effect
 
     with patch("context_scribe.main.ClaudeProvider", return_value=mock_provider):
-        with patch("context_scribe.main.Evaluator", return_value=mock_evaluator):
+        with patch("context_scribe.main.ClaudeEvaluator", return_value=mock_evaluator):
             with patch("context_scribe.main.MemoryBankClient", return_value=mock_mcp):
                 with patch("context_scribe.main.bootstrap_claude_config"):
                     # Mock Live to avoid rich rendering logic completely
