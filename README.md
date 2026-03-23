@@ -45,7 +45,7 @@ Context-Scribe uses a **Provider Pattern** to support multiple AI tools:
 ## 📋 Prerequisites
 
 *   **Python 3.10+**
-*   **Gemini CLI**: Required when using `--tool gemini`. The daemon uses your local `gemini` CLI installation for headless evaluation.
+*   **Gemini CLI**: Required when using `--tool gemini-cli`. The daemon uses your local `gemini` CLI installation for headless evaluation.
 *   **GitHub Copilot** (optional): VS Code with the GitHub Copilot Chat extension installed, if using `--tool copilot`.
 *   **Claude Code CLI**: Required when using `--tool claude`. Install from the [Claude Code documentation](https://docs.anthropic.com/en/docs/claude-code).
 *   **Memory Bank MCP**: Your AI tool **must** have the `@allpepper/memory-bank-mcp` server configured.
@@ -71,7 +71,7 @@ Context-Scribe uses a **Provider Pattern** to support multiple AI tools:
 Start the daemon using the default Memory Bank location (`~/.memory-bank`):
 ```bash
 # Monitor Gemini CLI sessions
-context-scribe --tool gemini
+context-scribe --tool gemini-cli
 
 # Monitor Claude Code sessions
 context-scribe --tool claude
@@ -85,7 +85,7 @@ context-scribe --tool copilot
 ### 2. Custom Memory Bank Location
 If your AI tool's MCP server is configured to use a non-default root directory, you **must** pass that path to Context-Scribe:
 ```bash
-context-scribe --tool gemini --bank-path "/path/to/your/custom-bank"
+context-scribe --tool gemini-cli --bank-path "/path/to/your/custom-bank"
 ```
 
 > [!CAUTION]
@@ -102,7 +102,7 @@ pytest --cov=context_scribe tests/
 
 ### Manual Interaction Test
 
-1.  **Start the daemon**: `context-scribe --tool gemini`
+1.  **Start the daemon**: `context-scribe --tool gemini-cli`
 
 2.  **Simulate an interaction**: 
     ```bash

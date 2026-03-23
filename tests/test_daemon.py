@@ -54,7 +54,7 @@ async def test_run_daemon_loop_one_iteration():
                             mock_live.return_value.__enter__.return_value = MagicMock()
                             
                             # Start daemon and wait for it to process the mocked interaction
-                            daemon_task = asyncio.create_task(run_daemon("gemini", "~/.memory-bank"))
+                            daemon_task = asyncio.create_task(run_daemon("gemini-cli", "~/.memory-bank"))
                             
                             # Wait until save_rule is called (meaning interaction processed)
                             for _ in range(50):

@@ -26,7 +26,7 @@ async def test_run_daemon_mcp_connection_failure():
                                 # Make the context manager work
                                 mock_live.return_value.__enter__.return_value = MagicMock()
                                 with pytest.raises(SystemExit):
-                                    await run_daemon("gemini", "~/.memory-bank")
+                                    await run_daemon("gemini-cli", "~/.memory-bank")
                                 mock_exit.assert_called_once_with(1)
 
 def test_cli_rejects_unsupported_tool():

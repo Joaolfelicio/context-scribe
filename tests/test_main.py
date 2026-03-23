@@ -63,7 +63,7 @@ def test_bootstrap_claude_config_skips_if_up_to_date(tmp_path):
 
 
 def test_dashboard_generate_layout():
-    db = Dashboard("gemini", "~/.memory-bank")
+    db = Dashboard("gemini-cli", "~/.memory-bank")
     db.status = "✅ SUCCESS"
     layout = db.generate_layout()
     assert layout is not None
