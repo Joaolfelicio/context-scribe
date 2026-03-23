@@ -13,6 +13,7 @@ from rich.table import Table
 from rich.spinner import Spinner
 
 from context_scribe.observer.gemini_provider import GeminiProvider
+from context_scribe.observer.copilot_provider import CopilotProvider
 from context_scribe.evaluator.llm import Evaluator
 from context_scribe.bridge.mcp_client import MemoryBankClient
 from context_scribe.observer.provider import Interaction, BaseProvider
@@ -122,9 +123,33 @@ def bootstrap_global_config() -> None:
         with open(gemini_md_path, "a", encoding="utf-8") as f:
             f.write(f"\n{MASTER_RETRIEVAL_RULE}\n")
 
+def bootstrap_copilot_config() -> None:
+    """Injects the master retrieval rule into GitHub Copilot's instructions file."""
+    config_path = os.path.expanduser("~/.config/github-copilot")
+    copilot_config_dir: Path = Path(config_path)
+    copilot_config_dir.mkdir(parents=True, exist_ok=True)
+    instructions_path: Path = copilot_config_dir / "instructions.md"
+
+    rule_up_to_date = False
+    if instructions_path.exists():
+        with open(instructions_path, "r", encoding="utf-8") as f:
+            content = f.read()
+            if "Rule Precedence:" in content:
+                rule_up_to_date = True
+
+    if not rule_up_to_date:
+        with open(instructions_path, "a", encoding="utf-8") as f:
+            f.write(f"\n{MASTER_RETRIEVAL_RULE}\n")
+
 async def run_daemon(tool: str, bank_path: str) -> bool:
-    bootstrap_global_config()
-    provider = GeminiProvider() if tool == "gemini" else None
+    if tool == "gemini":
+        bootstrap_global_config()
+        provider = GeminiProvider()
+    elif tool == "copilot":
+        bootstrap_copilot_config()
+        provider = CopilotProvider()
+    else:
+        provider = None
     if not provider: return False
 
     evaluator = Evaluator()
