@@ -18,7 +18,7 @@ from context_scribe.observer.claude_provider import ClaudeProvider
 from context_scribe.evaluator.gemini_cli_llm import GeminiCliEvaluator
 from context_scribe.evaluator.claude_llm import ClaudeEvaluator
 from context_scribe.bridge.mcp_client import MemoryBankClient
-from context_scribe.observer.provider import Interaction, BaseProvider
+from context_scribe.observer.base_provider import Interaction, BaseProvider
 
 console: Console = Console()
 

@@ -1,181 +1,62 @@
 import json
-import os
-import shutil
-import time
+import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Iterator, Dict, Set
-
-from watchdog.events import FileSystemEventHandler
-from watchdog.observers import Observer
 
 from context_scribe.evaluator.models import INTERNAL_SIGNATURE
-from context_scribe.observer.provider import Interaction, BaseProvider
+from context_scribe.observer.base_provider import Interaction, BaseProvider
 
-
-class GeminiLogHandler(FileSystemEventHandler):
-    def __init__(self, callback):
-        super().__init__()
-        self.callback = callback
-
-    def on_modified(self, event):
-        if event.is_directory:
-            return
-        if event.src_path.endswith(".json"):
-            self.callback(event.src_path)
-
-    def on_created(self, event):
-        if event.is_directory:
-            return
-        if event.src_path.endswith(".json"):
-            self.callback(event.src_path)
-
+logger = logging.getLogger(__name__)
 
 class GeminiProvider(BaseProvider):
     def __init__(self, log_dir: str = "~/.gemini/tmp/"):
-        self.log_dir = Path(os.path.expanduser(log_dir))
-        self.interaction_queue = []
-        # Track processed message IDs globally across all files to avoid duplicates
-        self.global_processed_ids: Set[str] = set()
-        # Track file mtimes to detect changes
-        self.last_mtimes: Dict[str, float] = {}
+        super().__init__(log_dir=log_dir, file_extension=".json")
         self._initialize_historical_logs()
 
-    def _initialize_historical_logs(self):
-        """Skip all messages existing before the daemon starts."""
-        if not self.log_dir.exists():
-            return
+    def _parse_historical_file(self, file_path: str):
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            messages = data if isinstance(data, list) else data.get("messages", [])
             
-        print("Initializing historical logs (skipping existing messages)...")
-        for file_path in self.log_dir.glob("**/*.json"):
-            try:
-                self.last_mtimes[str(file_path)] = os.path.getmtime(file_path)
-                with open(file_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    messages = self._get_messages_from_data(data)
-                    
-                    if isinstance(data, dict):
-                        session_id = data.get("sessionId") or data.get("id") or "unknown"
-                    else:
-                        session_id = "unknown"
-                    
-                    for msg in messages:
-                        raw_msg_id = msg.get("id") or msg.get("messageId") or str(msg)
-                        self.global_processed_ids.add(f"{session_id}_{raw_msg_id}")
-            except Exception:
-                pass
+            if isinstance(data, dict):
+                session_id = data.get("sessionId") or data.get("id") or "unknown"
+            else:
+                session_id = "unknown"
 
-    def _get_messages_from_data(self, data) -> list:
-        """Extracts a list of message objects from various possible JSON structures."""
-        if isinstance(data, dict):
-            if "messages" in data:
-                return data["messages"]
-            return [data]
-        elif isinstance(data, list):
-            return data
-        return []
+            for msg in messages:
+                raw_msg_id = msg.get("id") or msg.get("messageId") or str(msg)
+                self.global_processed_ids.add(f"{session_id}_{raw_msg_id}")
 
-    def _process_file(self, file_path: str):
+    def _parse_file_content(self, temp_path: str, original_path: str):
         # Extract project name from the directory structure
         try:
-            path_obj = Path(file_path)
+            path_obj = Path(original_path)
             rel_path = path_obj.relative_to(self.log_dir)
             if len(rel_path.parts) == 1:
                 project_name = "global"
             else:
                 project_name = rel_path.parts[0]
-        except Exception:
+        except ValueError:
             project_name = "global"
 
-        temp_path = f"{file_path}.snapshot"
-        try:
-            shutil.copy2(file_path, temp_path)
-            with open(temp_path, "r", encoding="utf-8") as f:
-                content = f.read().strip()
-                if not content:
-                    return
-                data = json.loads(content)
-                messages = self._get_messages_from_data(data)
-                
-                if isinstance(data, dict):
-                    session_id = data.get("sessionId") or data.get("id") or "unknown"
-                else:
-                    session_id = "unknown"
-                
-                for msg in messages:
-                    raw_msg_id = msg.get("id") or msg.get("messageId") or str(msg)
-                    msg_id = f"{session_id}_{raw_msg_id}"
-                    
-                    if msg_id not in self.global_processed_ids:
-                        self._extract_interaction(msg, project_name)
-                        self.global_processed_ids.add(msg_id)
-        except Exception:
-            pass
-        finally:
-            if os.path.exists(temp_path):
-                try:
-                    os.remove(temp_path)
-                except Exception:
-                    pass
-
-    def _extract_interaction(self, data: dict, project_name: str):
-        role = data.get("type") or data.get("role") or "unknown"
-        raw_content = data.get("content") or data.get("message") or data.get("text") or ""
-        
-        if isinstance(raw_content, list):
-            text_parts = []
-            for part in raw_content:
-                if isinstance(part, dict):
-                    text_parts.append(part.get("text", ""))
-                else:
-                    text_parts.append(str(part))
-            content = "\n".join(text_parts)
-        else:
-            content = str(raw_content)
+        with open(temp_path, "r", encoding="utf-8") as f:
+            content = f.read().strip()
+            if not content:
+                return
+            data = json.loads(content)
             
-        # BREAK THE FEEDBACK LOOP
-        if INTERNAL_SIGNATURE in content.upper():
-            return None
+            messages = data if isinstance(data, list) else data.get("messages", [])
+            
+            if isinstance(data, dict):
+                session_id = data.get("sessionId") or data.get("id") or "unknown"
+            else:
+                session_id = "unknown"
 
-        if content.strip() and role == "user":
-            self.interaction_queue.append(
-                Interaction(
-                    timestamp=datetime.now(),
-                    role=role,
-                    content=content,
-                    project_name=project_name,
-                    metadata=data
-                )
-            )
-
-    def watch(self) -> Iterator[Interaction]:
-        if not self.log_dir.exists():
-            self.log_dir.mkdir(parents=True, exist_ok=True)
-
-        event_handler = GeminiLogHandler(self._process_file)
-        observer = Observer()
-        observer.schedule(event_handler, str(self.log_dir), recursive=True)
-        observer.start()
-
-        try:
-            while True:
-                for file_path in self.log_dir.glob("**/*.json"):
-                    try:
-                        mtime = os.path.getmtime(file_path)
-                        if str(file_path) not in self.last_mtimes or mtime > self.last_mtimes.get(str(file_path), 0):
-                            self.last_mtimes[str(file_path)] = mtime
-                            self._process_file(str(file_path))
-                    except Exception:
-                        pass
+            for msg in messages:
+                raw_msg_id = msg.get("id") or msg.get("messageId") or str(msg)
+                msg_id = f"{session_id}_{raw_msg_id}"
                 
-                if not self.interaction_queue:
-                    yield None
-                    time.sleep(1)
-                    continue
-                    
-                while self.interaction_queue:
-                    yield self.interaction_queue.pop(0)
-        except KeyboardInterrupt:
-            observer.stop()
-        
-        observer.join()
+                if msg_id not in self.global_processed_ids:
+                    self._extract_interaction(msg, project_name)
+                    self.global_processed_ids.add(msg_id)
+

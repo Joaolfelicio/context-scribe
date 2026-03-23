@@ -4,20 +4,6 @@ from pathlib import Path
 from context_scribe.observer.gemini_provider import GeminiProvider
 from context_scribe.evaluator.models import INTERNAL_SIGNATURE
 
-def test_get_messages_from_data_dict_messages():
-    provider = GeminiProvider()
-    data = {"messages": [{"id": "1", "text": "hello"}]}
-    messages = provider._get_messages_from_data(data)
-    assert len(messages) == 1
-    assert messages[0]["text"] == "hello"
-
-def test_get_messages_from_data_list():
-    provider = GeminiProvider()
-    data = [{"message": "hello"}]
-    messages = provider._get_messages_from_data(data)
-    assert len(messages) == 1
-    assert messages[0]["message"] == "hello"
-
 def test_extract_interaction_user_filter():
     provider = GeminiProvider()
     # User message should be added
