@@ -20,6 +20,7 @@ from context_scribe.evaluator.claude_llm import ClaudeEvaluator
 from context_scribe.evaluator.copilot_llm import CopilotEvaluator
 from context_scribe.bridge.mcp_client import MemoryBankClient
 
+logger = logging.getLogger("context_scribe")
 console: Console = Console()
 
 MASTER_RETRIEVAL_RULE = """
@@ -278,7 +279,7 @@ async def run_daemon(tool: str, bank_path: str, debug: bool = False, evaluator_n
     return True
 
 @click.command()
-@click.option('--tool', default='gemini-cli', type=click.Choice(['gemini-cli', 'copilot', 'claude']), help='The AI tool to monitor')
+@click.option('--tool', default='copilot', type=click.Choice(['gemini-cli', 'copilot', 'claude']), help='The AI tool to monitor')
 @click.option('--bank-path', default='~/.memory-bank', help='Path to your Memory Bank root')
 @click.option('--evaluator', 'evaluator_name', default='auto', type=click.Choice(['auto', 'copilot', 'claude', 'gemini']), help='Evaluator LLM to use (default: auto-detect)')
 @click.option('--debug', is_flag=True, default=False, help='Stream plain debug logs instead of dashboard UI')
