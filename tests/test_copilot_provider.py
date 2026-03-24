@@ -177,16 +177,19 @@ def test_parse_cli_file_malformed_timestamp(tmp_path):
     events_file = session_dir / "events.jsonl"
     events_file.write_text(
         '{"type":"session.start","data":{"context":{"cwd":"/projects/myapp"}}}\n'
-        '{"type":"user.message","id":"msg1","timestamp":"not-a-timestamp",'
-        '"data":{"content":"hello"}}\n'
-        '{"type":"user.message","id":"msg2",'
-        '"data":{"content":"no timestamp key"}}\n'
     )
 
+    # Initialize provider with only the session.start event (offset recorded at EOF)
     provider = CopilotProvider(log_dir=str(tmp_path / "chat"), cli_log_dir=str(cli_dir))
-    # Mark as unseen so _parse_cli_file will process them
-    provider.global_processed_ids.discard("msg1")
-    provider.global_processed_ids.discard("msg2")
+
+    # Simulate new events appended after init
+    with events_file.open("a") as f:
+        f.write(
+            '{"type":"user.message","id":"msg1","timestamp":"not-a-timestamp",'
+            '"data":{"content":"hello"}}\n'
+            '{"type":"user.message","id":"msg2",'
+            '"data":{"content":"no timestamp key"}}\n'
+        )
 
     provider._parse_cli_file(str(events_file))
     contents = [i.content for i in provider.interaction_queue]

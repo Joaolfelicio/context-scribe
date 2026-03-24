@@ -258,7 +258,10 @@ async def run_daemon(tool: str, bank_path: str, debug: bool = False, evaluator_n
 
                     db.add_history(dest_path, rule_output.description)
                     _status(f"✅ SUCCESS: Updated {dest_path}", db, live, debug)
-                    console.print(f"[bold green]▶ UPDATED:[/bold green] [cyan]{dest_path}[/cyan] ({rule_output.description})")
+                    if not debug:
+                        console.print(f"[bold green]▶ UPDATED:[/bold green] [cyan]{dest_path}[/cyan] ({rule_output.description})")
+                    else:
+                        logger.info("UPDATED: %s (%s)", dest_path, rule_output.description)
                     await asyncio.sleep(2)
 
                 _status("🔍 Watching log stream...", db, live, debug)

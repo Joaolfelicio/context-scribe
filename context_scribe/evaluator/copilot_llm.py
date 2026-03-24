@@ -29,6 +29,13 @@ class CopilotEvaluator(BaseEvaluator):
             check=False,
             timeout=120,
         )
+        if result.returncode != 0:
+            logger.error(
+                "Copilot CLI exited with non-zero status %s. Stderr: %s",
+                result.returncode,
+                (result.stderr or "").strip(),
+            )
+            return ""
         # Output is a JSONL event stream; extract the last assistant.message content
         response_text = ""
         for line in result.stdout.splitlines():

@@ -26,6 +26,8 @@ class CopilotProvider(BaseProvider):
     ):
         super().__init__(log_dir=log_dir, file_extension=".json")
         self.cli_log_dir = Path(os.path.expanduser(cli_log_dir))
+        self._cli_project_name_cache: dict = {}   # file_path -> project_name
+        self._cli_file_offsets: dict = {}          # file_path -> last byte offset read
         self._initialize_historical_logs()
         self._initialize_cli_historical_logs()
 
@@ -37,7 +39,10 @@ class CopilotProvider(BaseProvider):
         with open(file_path, "r", encoding="utf-8") as f:
             data = json.load(f)
             messages = self._get_messages_from_data(data)
-            session_id = data.get("sessionId") or data.get("id") or "unknown" if isinstance(data, dict) else "unknown"
+            if isinstance(data, dict):
+                session_id = data.get("sessionId") or data.get("id") or "unknown"
+            else:
+                session_id = "unknown"
             for msg in messages:
                 raw_msg_id = msg.get("id") or msg.get("messageId") or str(msg)
                 self.global_processed_ids.add(f"{session_id}_{raw_msg_id}")
@@ -82,7 +87,10 @@ class CopilotProvider(BaseProvider):
                 return
             data = json.loads(content)
             messages = self._get_messages_from_data(data)
-            session_id = data.get("sessionId") or data.get("id") or "unknown" if isinstance(data, dict) else "unknown"
+            if isinstance(data, dict):
+                session_id = data.get("sessionId") or data.get("id") or "unknown"
+            else:
+                session_id = "unknown"
 
             for msg in messages:
                 raw_msg_id = msg.get("id") or msg.get("messageId") or str(msg)
@@ -117,10 +125,11 @@ class CopilotProvider(BaseProvider):
         """Mark existing Copilot CLI event IDs as seen so we don't reprocess them."""
         if not self.cli_log_dir.exists():
             return
-        print("Initializing Copilot CLI historical logs...")
+        logger.info("Initializing Copilot CLI historical logs...")
         for file_path in self.cli_log_dir.glob("*/events.jsonl"):
+            key = str(file_path)
             try:
-                self.last_mtimes[str(file_path)] = os.path.getmtime(file_path)
+                self.last_mtimes[key] = os.path.getmtime(file_path)
                 with open(file_path, "r", encoding="utf-8") as f:
                     for line in f:
                         line = line.strip()
@@ -132,15 +141,22 @@ class CopilotProvider(BaseProvider):
                             continue
                         if event.get("type") == "user.message":
                             self.global_processed_ids.add(event.get("id", str(event)))
+                    # Record offset so _parse_cli_file only reads new lines
+                    self._cli_file_offsets[key] = f.tell()
             except OSError as e:
                 logger.debug("Failed to init CLI log %s: %s", file_path, e)
 
     def _parse_cli_file(self, file_path: str):
-        """Process new user.message events in a Copilot CLI events.jsonl file."""
+        """Process only new user.message events appended to a Copilot CLI events.jsonl."""
         with self._lock:
-            project_name = self._get_cli_project_name(file_path)
+            key = str(file_path)
+            if key not in self._cli_project_name_cache:
+                self._cli_project_name_cache[key] = self._get_cli_project_name(file_path)
+            project_name = self._cli_project_name_cache[key]
+            offset = self._cli_file_offsets.get(key, 0)
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
+                    f.seek(offset)
                     for line in f:
                         line = line.strip()
                         if not line:
@@ -164,6 +180,10 @@ class CopilotProvider(BaseProvider):
                             continue
 
                         self.global_processed_ids.add(event_id)
+                        # Cap processed IDs to prevent unbounded memory growth
+                        if len(self.global_processed_ids) > self._MAX_PROCESSED_IDS:
+                            self.global_processed_ids.clear()
+
                         try:
                             ts_raw = event.get("timestamp", "")
                             ts = datetime.fromisoformat(ts_raw.replace("Z", "+00:00")) if ts_raw else datetime.now()
@@ -179,6 +199,7 @@ class CopilotProvider(BaseProvider):
                             )
                         )
                         logger.debug("CLI event queued: %s (project=%s)", event_id[:8], project_name)
+                    self._cli_file_offsets[key] = f.tell()
             except OSError as e:
                 logger.debug("Failed to read CLI log %s: %s", file_path, e)
 
