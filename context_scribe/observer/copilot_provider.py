@@ -126,10 +126,13 @@ class CopilotProvider(BaseProvider):
                         line = line.strip()
                         if not line:
                             continue
-                        event = json.loads(line)
+                        try:
+                            event = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
                         if event.get("type") == "user.message":
                             self.global_processed_ids.add(event.get("id", str(event)))
-            except (json.JSONDecodeError, OSError) as e:
+            except OSError as e:
                 logger.debug("Failed to init CLI log %s: %s", file_path, e)
 
     def _parse_cli_file(self, file_path: str):
@@ -161,11 +164,14 @@ class CopilotProvider(BaseProvider):
                             continue
 
                         self.global_processed_ids.add(event_id)
+                        try:
+                            ts_raw = event.get("timestamp", "")
+                            ts = datetime.fromisoformat(ts_raw.replace("Z", "+00:00")) if ts_raw else datetime.now()
+                        except (ValueError, AttributeError):
+                            ts = datetime.now()
                         self.interaction_queue.append(
                             Interaction(
-                                timestamp=datetime.fromisoformat(
-                                    event.get("timestamp", datetime.now().isoformat()).replace("Z", "+00:00")
-                                ),
+                                timestamp=ts,
                                 role="user",
                                 content=content,
                                 project_name=project_name,

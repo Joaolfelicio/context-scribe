@@ -182,13 +182,6 @@ def _status(msg: str, db, live, debug: bool):
         live.update(db.generate_layout())
 
 
-    db.status = msg
-    if debug:
-        logging.getLogger("context_scribe").info(msg)
-    elif live:
-        live.update(db.generate_layout())
-
-
 async def run_daemon(tool: str, bank_path: str, debug: bool = False, evaluator_name: str = "auto") -> bool:
     if tool == "gemini-cli":
         bootstrap_global_config()

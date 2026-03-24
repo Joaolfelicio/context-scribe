@@ -7,26 +7,29 @@ from context_scribe.evaluator.base_evaluator import BaseEvaluator
 
 logger = logging.getLogger(__name__)
 
-COPILOT_CLI = shutil.which("copilot") or "copilot"
-
 
 class CopilotEvaluator(BaseEvaluator):
     """Evaluator that uses the GitHub Copilot CLI for headless rule extraction."""
 
     def __init__(self):
         super().__init__()
-        if not shutil.which("copilot"):
-            logger.warning("GitHub Copilot CLI not found in PATH.")
+        self._cli_path = shutil.which("copilot")
+        if not self._cli_path:
+            logger.warning(
+                "GitHub Copilot CLI not found in PATH. "
+                "CopilotEvaluator will fail at evaluation time."
+            )
 
     def _execute_cli(self, prompt: str) -> str:
+        cli = self._cli_path or shutil.which("copilot") or "copilot"
         result = subprocess.run(
-            [COPILOT_CLI, "-p", prompt, "--output-format", "json"],
+            [cli, "-p", prompt, "--output-format", "json"],
             capture_output=True,
             text=True,
             check=False,
             timeout=120,
         )
-        # Output is JSONL; extract the last assistant.message content
+        # Output is a JSONL event stream; extract the last assistant.message content
         response_text = ""
         for line in result.stdout.splitlines():
             line = line.strip()
