@@ -92,7 +92,10 @@ def test_initialize_historical_logs(tmp_path):
     }
     log_file.write_text(json.dumps(data))
 
-    provider = CopilotProvider(log_dir=str(tmp_path))
+    # Isolate cli_log_dir to an empty tmp dir so real CLI logs don't leak in
+    cli_dir = tmp_path / "cli"
+    cli_dir.mkdir()
+    provider = CopilotProvider(log_dir=str(tmp_path), cli_log_dir=str(cli_dir))
     # The historical message should already be in global_processed_ids
     assert len(provider.global_processed_ids) == 1
 
