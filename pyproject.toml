@@ -12,7 +12,8 @@ dependencies = [
     "watchdog",
     "rich",
     "mcp",
-    "click"
+    "click",
+    "PyYAML"
 ]
 
 [project.optional-dependencies]
@@ -22,6 +23,16 @@ test = [
     "pytest-mock",
     "pytest-cov"
 ]
+dev = [
+    "ruff"
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]  # PEP8 equivalent: errors, pyflakes, warnings
 
 [project.scripts]
 context-scribe = "context_scribe.main:cli"

@@ -43,6 +43,22 @@ class BaseEvaluator(ABC):
             try:
                 data = json.loads(output)
                 if isinstance(data, dict):
+                    # If it's already a rule object (e.g. from copilot cli directly)
+                    if "scope" in data and "rules" in data:
+                        rules_raw = data["rules"]
+                        desc = data.get("description", "Updated rules")
+                        if isinstance(rules_raw, list):
+                            rules_content = "\n".join([str(r) for r in rules_raw]).strip()
+                        else:
+                            rules_content = str(rules_raw).strip()
+                        
+                        if len(rules_content) > 0:
+                            return RuleOutput(
+                                content=rules_content, 
+                                scope=str(data["scope"]).upper(), 
+                                description=str(desc)
+                            )
+                    
                     # Handle both gemini ("response") and claude ("result"/"response") formats
                     response_text = data.get("result", data.get("response", output))
             except json.JSONDecodeError:

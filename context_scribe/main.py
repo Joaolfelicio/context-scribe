@@ -1,5 +1,6 @@
 import asyncio
 import os
+import json
 from pathlib import Path
 from datetime import datetime
 import click
@@ -13,9 +14,11 @@ from rich.spinner import Spinner
 
 from context_scribe.observer.gemini_cli_provider import GeminiCliProvider
 from context_scribe.observer.copilot_provider import CopilotProvider
+from context_scribe.observer.copilot_cli_provider import CopilotCliProvider
 from context_scribe.observer.claude_provider import ClaudeProvider
 from context_scribe.evaluator.gemini_cli_llm import GeminiCliEvaluator
 from context_scribe.evaluator.claude_llm import ClaudeEvaluator
+from context_scribe.evaluator.copilot_cli_llm import CopilotCliEvaluator
 from context_scribe.bridge.mcp_client import MemoryBankClient
 
 console: Console = Console()
@@ -112,34 +115,64 @@ def bootstrap_global_config() -> None:
     gemini_config_dir.mkdir(parents=True, exist_ok=True)
     gemini_md_path: Path = gemini_config_dir / "GEMINI.md"
 
-    rule_up_to_date = False
-    if gemini_md_path.exists():
-        with open(gemini_md_path, "r", encoding="utf-8") as f:
-            content = f.read()
-            if "Rule Precedence:" in content:
-                rule_up_to_date = True
+    if not gemini_md_path.exists():
+        gemini_md_path.write_text(f"{MASTER_RETRIEVAL_RULE}\n", encoding="utf-8")
+        console.print(f"[bold green]Created:[/bold green] {gemini_md_path}")
+        return
 
-    if not rule_up_to_date:
-        with open(gemini_md_path, "a", encoding="utf-8") as f:
-            f.write(f"\n{MASTER_RETRIEVAL_RULE}\n")
+    with open(gemini_md_path, "r", encoding="utf-8") as f:
+        content = f.read()
+        if "Rule Precedence:" in content:
+            return
+
+    with open(gemini_md_path, "a", encoding="utf-8") as f:
+        f.write(f"\n{MASTER_RETRIEVAL_RULE}\n")
+    console.print(f"[bold blue]Updated:[/bold blue] {gemini_md_path}")
 
 def bootstrap_copilot_config() -> None:
     """Injects the master retrieval rule into GitHub Copilot's instructions file."""
-    config_path = os.path.expanduser("~/.config/github-copilot")
-    copilot_config_dir: Path = Path(config_path)
-    copilot_config_dir.mkdir(parents=True, exist_ok=True)
-    instructions_path: Path = copilot_config_dir / "instructions.md"
-
-    rule_up_to_date = False
-    if instructions_path.exists():
+    # Primary path for both CLI and VS Code Extension
+    config_path = os.path.expanduser("~/.copilot")
+    config_dir: Path = Path(config_path)
+    config_dir.mkdir(parents=True, exist_ok=True)
+    
+    instructions_path = config_dir / "instructions.md"
+    if not instructions_path.exists():
+        instructions_path.write_text(f"{MASTER_RETRIEVAL_RULE}\n", encoding="utf-8")
+        console.print(f"[bold green]Created:[/bold green] {instructions_path}")
+    else:
         with open(instructions_path, "r", encoding="utf-8") as f:
             content = f.read()
-            if "# Memory Bank Integration" in content:
-                rule_up_to_date = True
+            if "# Memory Bank Integration" not in content:
+                with open(instructions_path, "a", encoding="utf-8") as f_append:
+                    f_append.write(f"\n{MASTER_RETRIEVAL_RULE}\n")
+                console.print(f"[bold blue]Updated:[/bold blue] {instructions_path}")
 
-    if not rule_up_to_date:
-        with open(instructions_path, "a", encoding="utf-8") as f:
-            f.write(f"\n{MASTER_RETRIEVAL_RULE}\n")
+    # Ensure MCP config for the CLI
+    mcp_config_path = config_dir / "mcp-config.json"
+    mcp_config = {}
+    if mcp_config_path.exists():
+        try:
+            with open(mcp_config_path, "r", encoding="utf-8") as f:
+                mcp_config = json.load(f)
+        except json.JSONDecodeError:
+            mcp_config = {}
+
+    if "mcpServers" not in mcp_config:
+        mcp_config["mcpServers"] = {}
+    
+    # Check if memory-bank is already there
+    if "memory-bank" not in mcp_config["mcpServers"]:
+        mcp_config["mcpServers"]["memory-bank"] = {
+            "command": "npx",
+            "args": ["-y", "@allpepper/memory-bank-mcp"],
+            "env": {
+                "MEMORY_BANK_ROOT": os.path.expanduser("~/.memory-bank")
+            }
+        }
+        with open(mcp_config_path, "w", encoding="utf-8") as f:
+            json.dump(mcp_config, f, indent=2)
+        console.print(f"[bold blue]Updated MCP config:[/bold blue] {mcp_config_path}")
 
 def bootstrap_claude_config() -> None:
     """Injects the master retrieval rule into Claude Code's global config."""
@@ -148,22 +181,28 @@ def bootstrap_claude_config() -> None:
     claude_config_dir.mkdir(parents=True, exist_ok=True)
     claude_md_path: Path = claude_config_dir / "CLAUDE.md"
 
-    rule_up_to_date = False
-    if claude_md_path.exists():
-        with open(claude_md_path, "r", encoding="utf-8") as f:
-            content = f.read()
-            if "Rule Precedence:" in content:
-                rule_up_to_date = True
+    if not claude_md_path.exists():
+        claude_md_path.write_text(f"{MASTER_RETRIEVAL_RULE}\n", encoding="utf-8")
+        console.print(f"[bold green]Created:[/bold green] {claude_md_path}")
+        return
 
-    if not rule_up_to_date:
-        with open(claude_md_path, "a", encoding="utf-8") as f:
-            f.write(f"\n{MASTER_RETRIEVAL_RULE}\n")
+    with open(claude_md_path, "r", encoding="utf-8") as f:
+        content = f.read()
+        if "Rule Precedence:" in content:
+            return
+
+    with open(claude_md_path, "a", encoding="utf-8") as f:
+        f.write(f"\n{MASTER_RETRIEVAL_RULE}\n")
+    console.print(f"[bold blue]Updated:[/bold blue] {claude_md_path}")
 
 
 async def run_daemon(tool: str, bank_path: str) -> bool:
     if tool == "gemini-cli":
         bootstrap_global_config()
         provider = GeminiCliProvider()
+    elif tool == "copilot-cli":
+        bootstrap_copilot_config()
+        provider = CopilotCliProvider()
     elif tool == "copilot":
         bootstrap_copilot_config()
         provider = CopilotProvider()
@@ -174,7 +213,13 @@ async def run_daemon(tool: str, bank_path: str) -> bool:
         provider = None
     if not provider: return False
 
-    evaluator = ClaudeEvaluator() if tool == "claude" else GeminiCliEvaluator()
+    if tool == "claude":
+        evaluator = ClaudeEvaluator()
+    elif tool in ["copilot", "copilot-cli"]:
+        evaluator = CopilotCliEvaluator()
+    else:
+        evaluator = GeminiCliEvaluator()
+        
     mcp_client = MemoryBankClient(bank_path=bank_path)
     
     try:
@@ -248,7 +293,7 @@ async def run_daemon(tool: str, bank_path: str) -> bool:
     return True
 
 @click.command()
-@click.option('--tool', default='gemini-cli', type=click.Choice(['gemini-cli', 'copilot', 'claude']), help='The AI tool to monitor')
+@click.option('--tool', default='gemini-cli', type=click.Choice(['gemini-cli', 'copilot', 'copilot-cli', 'claude']), help='The AI tool to monitor')
 @click.option('--bank-path', default='~/.memory-bank', help='Path to your Memory Bank root')
 def cli(tool, bank_path):
     """Context-Scribe: Persistent Secretary Daemon"""

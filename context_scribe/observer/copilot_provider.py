@@ -86,4 +86,3 @@ class CopilotProvider(BaseProvider):
                 if msg_id not in self.global_processed_ids:
                     self._extract_interaction(msg, project_name)
                     self.global_processed_ids.add(msg_id)
-

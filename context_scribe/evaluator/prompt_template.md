@@ -20,17 +20,21 @@ LATEST USER INTERACTION TO ANALYZE:
 
 INSTRUCTIONS:
 1. Categorize the rule with a strict **"Global-Unless-Proven-Local"** policy:
-   - **GLOBAL (DEFAULT)**: General preferences applying universally.
-   - **PROJECT (EXCEPTION)**: Rules unique to "{project_name}" or explicitly restricted by the user.
+   - **GLOBAL (DEFAULT)**: Use this for ALL rules unless the user explicitly restricts it to the current project.
+   - **PROJECT (STRICT EXCEPTION)**: Use this ONLY if the user uses phrases like "in this project", "for this repo", "here", or if the rule is technically impossible to apply globally.
+   - If the user says "Always use PEP8", that is GLOBAL.
+   - If the user says "In this project, always use PEP8", that is PROJECT.
 2. Rule Hierarchy & Updates (CRITICAL):
    - If the rule is GLOBAL: Merge it ONLY into the **EXISTING GLOBAL RULES** list.
    - If the rule is PROJECT: Merge it ONLY into the **EXISTING PROJECT RULES** list.
    - **Exclusive Scope**: When outputting rules for a scope, **DO NOT** include rules from the other scope.
    - **Preservation Mandate**: You are FORBIDDEN from autonomously deleting rules or deduplicating by moving them between scopes. However, if a new user instruction directly CONTRADICTS an existing rule, you MUST replace the old rule with the new one (**New-Trumps-Old**).
    - **NEVER** mix global rules into the project list, or vice versa.
-3. Rule Enhancement:
-   - Professionalize slang and add concrete examples.
-   - Ensure rules are phrased as clear directives.
+3. Rule Enhancement (Minimalism Mandate):
+   - BE CONCISE. PHRASE RULES AS SINGLE, ACTIONABLE SENTENCES.
+   - Professionalize slang but DO NOT add unnecessary fluff or explanations.
+   - **DO NOT add concrete examples** unless the user explicitly provided one that is critical for understanding.
+   - If the user provides a high-level standard (like "PEP8"), DO NOT list its sub-rules. Just record the standard itself.
 4. Output Format:
    - Output a JSON object with:
      - "scope": "GLOBAL" or "PROJECT"

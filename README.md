@@ -39,7 +39,8 @@ Context-Scribe uses a **Provider Pattern** to support multiple AI tools:
 | Tool | Provider | Log Format | Status |
 |------|----------|------------|--------|
 | [Gemini CLI](https://github.com/google/gemini-cli) | `GeminiProvider` | JSON (`~/.gemini/tmp/`) | Supported |
-| [GitHub Copilot](https://github.com/features/copilot) | `CopilotProvider` | JSON (`~/.config/github-copilot/chat/`) | Supported |
+| [GitHub Copilot (VS Code)](https://github.com/features/copilot) | `CopilotProvider` | JSON (`~/.config/github-copilot/chat/`) | Supported |
+| [GitHub Copilot CLI](https://github.com/features/copilot/cli) | `CopilotCliProvider` | JSONL (`~/.copilot/session-state/`) | Supported |
 | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `ClaudeProvider` | JSONL (`~/.claude/projects/`) | Supported |
 
 ## 📋 Prerequisites
@@ -76,8 +77,11 @@ context-scribe --tool gemini-cli
 # Monitor Claude Code sessions
 context-scribe --tool claude
 
-# Monitor Copilot sessions
+# Monitor Copilot (VS Code) sessions
 context-scribe --tool copilot
+
+# Monitor Copilot CLI sessions
+context-scribe --tool copilot-cli
 ```
 
 ### 2. Custom Memory Bank Location

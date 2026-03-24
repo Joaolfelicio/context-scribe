@@ -1,3 +1,4 @@
+import json
 from unittest.mock import patch
 from context_scribe.main import bootstrap_global_config, bootstrap_copilot_config, bootstrap_claude_config, Dashboard
 
@@ -26,9 +27,21 @@ def test_bootstrap_copilot_config_creates_file(tmp_path):
     with patch("os.path.expanduser") as mock_expand:
         mock_expand.side_effect = lambda x: x.replace("~", str(tmp_path))
         bootstrap_copilot_config()
-        instructions_md = tmp_path / ".config" / "github-copilot" / "instructions.md"
+        
+        # Verify .copilot dir is created
+        cli_dir = tmp_path / ".copilot"
+        assert cli_dir.exists()
+
+        # Verify instructions.md is created
+        instructions_md = cli_dir / "instructions.md"
         assert instructions_md.exists()
         assert "Memory Bank Integration" in instructions_md.read_text()
+        
+        # Verify mcp-config.json is created and configured
+        mcp_config = cli_dir / "mcp-config.json"
+        assert mcp_config.exists()
+        config_data = json.loads(mcp_config.read_text())
+        assert "memory-bank" in config_data["mcpServers"]
 
 def test_bootstrap_claude_config_creates_file(tmp_path):
     with patch("os.path.expanduser") as mock_expand:
