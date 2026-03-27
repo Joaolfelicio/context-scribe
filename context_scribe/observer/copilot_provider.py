@@ -228,29 +228,35 @@ class CopilotProvider(BaseProvider):
         logger.debug("Watching VS Code chat: %s", self.log_dir)
         logger.debug("Watching Copilot CLI:  %s", self.cli_log_dir)
 
+        last_scan_time = 0
+        scan_interval = 60  # Safety-net scan once per minute
+
         try:
             while True:
-                # Periodic scan — VS Code chat JSON files
-                for file_path in self.log_dir.glob("**/*.json"):
-                    try:
-                        mtime = os.path.getmtime(file_path)
-                        key = str(file_path)
-                        if key not in self.last_mtimes or mtime > self.last_mtimes[key]:
-                            self.last_mtimes[key] = mtime
-                            self._process_file(str(file_path))
-                    except OSError as e:
-                        logger.debug("mtime check failed %s: %s", file_path, e)
+                current_time = time.time()
+                if current_time - last_scan_time > scan_interval:
+                    # Periodic scan — VS Code chat JSON files
+                    for file_path in self.log_dir.glob("**/*.json"):
+                        try:
+                            mtime = os.path.getmtime(file_path)
+                            key = str(file_path)
+                            if key not in self.last_mtimes or mtime > self.last_mtimes[key]:
+                                self.last_mtimes[key] = mtime
+                                self._process_file(str(file_path))
+                        except OSError as e:
+                            logger.debug("mtime check failed %s: %s", file_path, e)
 
-                # Periodic scan — Copilot CLI events.jsonl files
-                for file_path in self.cli_log_dir.glob("*/events.jsonl"):
-                    try:
-                        mtime = os.path.getmtime(file_path)
-                        key = str(file_path)
-                        if key not in self.last_mtimes or mtime > self.last_mtimes[key]:
-                            self.last_mtimes[key] = mtime
-                            self._parse_cli_file(str(file_path))
-                    except OSError as e:
-                        logger.debug("mtime check failed %s: %s", file_path, e)
+                    # Periodic scan — Copilot CLI events.jsonl files
+                    for file_path in self.cli_log_dir.glob("*/events.jsonl"):
+                        try:
+                            mtime = os.path.getmtime(file_path)
+                            key = str(file_path)
+                            if key not in self.last_mtimes or mtime > self.last_mtimes[key]:
+                                self.last_mtimes[key] = mtime
+                                self._parse_cli_file(str(file_path))
+                        except OSError as e:
+                            logger.debug("mtime check failed %s: %s", file_path, e)
+                    last_scan_time = current_time
 
                 if not self.interaction_queue:
                     yield None
