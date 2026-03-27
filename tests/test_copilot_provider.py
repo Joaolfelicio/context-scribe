@@ -1,4 +1,10 @@
 import json
+import os
+import tempfile  # noqa: F401
+import time
+from pathlib import Path
+from unittest.mock import patch, MagicMock
+
 from context_scribe.observer.copilot_provider import CopilotProvider
 from context_scribe.models.evaluator_models import INTERNAL_SIGNATURE
 
@@ -92,7 +98,10 @@ def test_initialize_historical_logs(tmp_path):
     }
     log_file.write_text(json.dumps(data))
 
-    provider = CopilotProvider(log_dir=str(tmp_path))
+    # Isolate cli_log_dir to an empty tmp dir so real CLI logs don't leak in
+    cli_dir = tmp_path / "cli"
+    cli_dir.mkdir()
+    provider = CopilotProvider(log_dir=str(tmp_path), cli_log_dir=str(cli_dir))
     # The historical message should already be in global_processed_ids
     assert len(provider.global_processed_ids) == 1
 
@@ -123,3 +132,82 @@ def test_project_name_detection(tmp_path):
     }))
     provider._process_file(str(project_log))
     assert provider.interaction_queue[1].project_name == "my-project"
+
+
+def test_initialize_cli_historical_logs(tmp_path):
+    """CLI historical log events are marked seen so they are not reprocessed."""
+    cli_dir = tmp_path / "cli"
+    session_dir = cli_dir / "session1"
+    session_dir.mkdir(parents=True)
+    events_file = session_dir / "events.jsonl"
+    events_file.write_text(
+        '{"type":"user.message","id":"msg1","data":{"content":"hello"}}\n'
+        '{"type":"user.message","id":"msg2","data":{"content":"world"}}\n'
+        '{"type":"assistant.message","id":"a1","data":{"content":"hi"}}\n'
+    )
+
+    provider = CopilotProvider(log_dir=str(tmp_path / "chat"), cli_log_dir=str(cli_dir))
+    assert "msg1" in provider.global_processed_ids
+    assert "msg2" in provider.global_processed_ids
+    assert "a1" not in provider.global_processed_ids  # assistant events not tracked
+
+
+def test_initialize_cli_historical_logs_bad_line(tmp_path):
+    """A corrupt JSONL line does not abort processing of subsequent valid lines."""
+    cli_dir = tmp_path / "cli"
+    session_dir = cli_dir / "session1"
+    session_dir.mkdir(parents=True)
+    events_file = session_dir / "events.jsonl"
+    events_file.write_text(
+        '{"type":"user.message","id":"msg1","data":{"content":"before corrupt"}}\n'
+        'NOT_VALID_JSON\n'
+        '{"type":"user.message","id":"msg3","data":{"content":"after corrupt"}}\n'
+    )
+
+    provider = CopilotProvider(log_dir=str(tmp_path / "chat"), cli_log_dir=str(cli_dir))
+    assert "msg1" in provider.global_processed_ids
+    assert "msg3" in provider.global_processed_ids
+
+
+def test_parse_cli_file_malformed_timestamp(tmp_path):
+    """Malformed timestamps fall back to now() without raising."""
+    cli_dir = tmp_path / "cli"
+    session_dir = cli_dir / "session1"
+    session_dir.mkdir(parents=True)
+    events_file = session_dir / "events.jsonl"
+    events_file.write_text(
+        '{"type":"session.start","data":{"context":{"cwd":"/projects/myapp"}}}\n'
+    )
+
+    # Initialize provider with only the session.start event (offset recorded at EOF)
+    provider = CopilotProvider(log_dir=str(tmp_path / "chat"), cli_log_dir=str(cli_dir))
+
+    # Simulate new events appended after init
+    with events_file.open("a") as f:
+        f.write(
+            '{"type":"user.message","id":"msg1","timestamp":"not-a-timestamp",'
+            '"data":{"content":"hello"}}\n'
+            '{"type":"user.message","id":"msg2",'
+            '"data":{"content":"no timestamp key"}}\n'
+        )
+
+    provider._parse_cli_file(str(events_file))
+    contents = [i.content for i in provider.interaction_queue]
+    assert "hello" in contents
+    assert "no timestamp key" in contents
+
+
+def test_get_cli_project_name(tmp_path):
+    """Project name derived from session.start cwd field."""
+    cli_dir = tmp_path / "cli"
+    session_dir = cli_dir / "session1"
+    session_dir.mkdir(parents=True)
+    events_file = session_dir / "events.jsonl"
+    events_file.write_text(
+        '{"type":"session.start","data":{"context":{"cwd":"/home/user/myapp"}}}\n'
+        '{"type":"user.message","id":"m1","data":{"content":"hi"}}\n'
+    )
+
+    provider = CopilotProvider(log_dir=str(tmp_path / "chat"), cli_log_dir=str(cli_dir))
+    name = provider._get_cli_project_name(str(events_file))
+    assert name == "myapp"
