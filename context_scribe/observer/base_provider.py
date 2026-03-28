@@ -6,6 +6,7 @@ import tempfile
 import threading
 import time
 from abc import ABC, abstractmethod
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -51,9 +52,10 @@ class BaseProvider(ABC):
         self.interaction_queue = []
         # Track processed message IDs globally across all files to avoid duplicates
         self.global_processed_ids: Set[str] = set()
+        self._processed_ids_order: deque = deque()
         # Track file mtimes to detect changes
         self.last_mtimes: Dict[str, float] = {}
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         # Subclasses must call self._initialize_historical_logs() after super().__init__()
         # if they need to parse historical messages differently, but we can provide a default.
 
@@ -77,6 +79,18 @@ class BaseProvider(ABC):
         """Parse a historical file to populate global_processed_ids without queuing interactions."""
         pass
 
+    def _mark_id_processed(self, msg_id: str):
+        """Thread-safe marking of an ID as processed with rolling eviction."""
+        with self._lock:
+            if msg_id not in self.global_processed_ids:
+                self.global_processed_ids.add(msg_id)
+                self._processed_ids_order.append(msg_id)
+                
+                # Rolling eviction to keep memory usage bounded without reprocessing everything
+                if len(self._processed_ids_order) > self._MAX_PROCESSED_IDS:
+                    oldest_id = self._processed_ids_order.popleft()
+                    self.global_processed_ids.discard(oldest_id)
+
     def _process_file(self, file_path: str):
         """Safely process a file by taking a snapshot, then delegate to subclass parsing."""
         with self._lock:
@@ -85,10 +99,6 @@ class BaseProvider(ABC):
                 os.close(fd)
                 shutil.copy2(file_path, temp_path)
                 self._parse_file_content(temp_path, file_path)
-                
-                # Cap global_processed_ids to prevent unbounded growth
-                if len(self.global_processed_ids) > self._MAX_PROCESSED_IDS:
-                    self.global_processed_ids.clear()
             except Exception as e:
                 logger.debug(f"Failed to process file {file_path}: {e}")
             finally:
@@ -169,8 +179,12 @@ class BaseProvider(ABC):
                     time.sleep(1)
                     continue
 
-                while self.interaction_queue:
-                    yield self.interaction_queue.pop(0)
+                with self._lock:
+                    items = list(self.interaction_queue)
+                    self.interaction_queue.clear()
+
+                for item in items:
+                    yield item
         except KeyboardInterrupt:
             pass
         finally:

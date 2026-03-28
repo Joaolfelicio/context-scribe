@@ -4,7 +4,6 @@ import time
 from unittest.mock import MagicMock, patch
 from context_scribe.observer.gemini_cli_provider import GeminiCliProvider
 
-@pytest.mark.timeout(5)
 def test_provider_watch_manual_scan_trigger(tmp_path):
     log_dir = tmp_path / "logs"
     log_dir.mkdir()

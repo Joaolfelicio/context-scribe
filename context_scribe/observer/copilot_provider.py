@@ -45,7 +45,7 @@ class CopilotProvider(BaseProvider):
                 session_id = "unknown"
             for msg in messages:
                 raw_msg_id = msg.get("id") or msg.get("messageId") or str(msg)
-                self.global_processed_ids.add(f"{session_id}_{raw_msg_id}")
+                self._mark_id_processed(f"{session_id}_{raw_msg_id}")
 
     def _get_messages_from_data(self, data) -> list:
         """Extracts a list of message objects from VS Code Copilot Chat JSON structures."""
@@ -97,7 +97,7 @@ class CopilotProvider(BaseProvider):
                 msg_id = f"{session_id}_{raw_msg_id}"
                 if msg_id not in self.global_processed_ids:
                     self._extract_interaction(msg, project_name)
-                    self.global_processed_ids.add(msg_id)
+                    self._mark_id_processed(msg_id)
 
     # ------------------------------------------------------------------ #
     # Copilot CLI (events.jsonl files under session-state/)               #
@@ -140,7 +140,7 @@ class CopilotProvider(BaseProvider):
                         except json.JSONDecodeError:
                             continue
                         if event.get("type") == "user.message":
-                            self.global_processed_ids.add(event.get("id", str(event)))
+                            self._mark_id_processed(event.get("id", str(event)))
                     # Record offset so _parse_cli_file only reads new lines
                     self._cli_file_offsets[key] = f.tell()
             except OSError as e:
@@ -179,10 +179,7 @@ class CopilotProvider(BaseProvider):
                         if INTERNAL_SIGNATURE in content.upper():
                             continue
 
-                        self.global_processed_ids.add(event_id)
-                        # Cap processed IDs to prevent unbounded memory growth
-                        if len(self.global_processed_ids) > self._MAX_PROCESSED_IDS:
-                            self.global_processed_ids.clear()
+                        self._mark_id_processed(event_id)
 
                         try:
                             ts_raw = event.get("timestamp", "")

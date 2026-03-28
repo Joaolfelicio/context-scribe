@@ -53,7 +53,7 @@ class ClaudeProvider(BaseProvider):
         messages = self._get_messages_from_file(file_path)
         for line_num, msg in messages:
             msg_id = self._make_msg_id(str(file_path), line_num, msg)
-            self.global_processed_ids.add(msg_id)
+            self._mark_id_processed(msg_id)
 
     def _parse_file_content(self, temp_path: str, original_path: str):
         # Extract project name from the directory structure
@@ -75,5 +75,5 @@ class ClaudeProvider(BaseProvider):
 
             if msg_id not in self.global_processed_ids:
                 self._extract_interaction(msg, project_name)
-                self.global_processed_ids.add(msg_id)
+                self._mark_id_processed(msg_id)
 

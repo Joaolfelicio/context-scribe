@@ -51,28 +51,50 @@ class BaseEvaluator(ABC):
             # Strip markdown code fences if present (Claude often wraps JSON in ```json ... ```)
             response_text = re.sub(r'```(?:json)?\s*', '', str(response_text)).strip()
 
-            # Try to parse rule JSON from response text using a non-greedy match
-            json_match = re.search(r'\{.*?"scope".*?"rules".*?\}', str(response_text), re.DOTALL)
-            if json_match:
+            # Robust JSON extraction: look for substrings that start with { and end with }
+            # and contain both "scope" and "rules"
+            best_rule_data = None
+            
+            # Find all { and } positions
+            start_indices = [i for i, char in enumerate(response_text) if char == '{']
+            end_indices = [i for i, char in enumerate(response_text) if char == '}']
+            
+            # Try progressively smaller substrings starting from the first { and ending at the last }
+            # until we find a valid JSON object that has our keys.
+            for start in start_indices:
+                for end in reversed(end_indices):
+                    if end > start:
+                        try:
+                            candidate = response_text[start:end+1]
+                            # Quick check to avoid expensive json.loads on non-candidates
+                            if '"scope"' in candidate and '"rules"' in candidate:
+                                data = json.loads(candidate)
+                                if isinstance(data, dict) and "scope" in data and "rules" in data:
+                                    best_rule_data = data
+                                    break
+                        except json.JSONDecodeError:
+                            continue
+                if best_rule_data:
+                    break
+
+            if best_rule_data:
                 try:
-                    rule_data = json.loads(json_match.group(0))
-                    if "scope" in rule_data and "rules" in rule_data:
-                        rules_raw = rule_data["rules"]
-                        desc = rule_data.get("description", "Updated rules")
+                    rules_raw = best_rule_data["rules"]
+                    desc = best_rule_data.get("description", "Updated rules")
+                    
+                    if isinstance(rules_raw, list):
+                        rules_content = "\n".join([str(r) for r in rules_raw]).strip()
+                    else:
+                        rules_content = str(rules_raw).strip()
                         
-                        if isinstance(rules_raw, list):
-                            rules_content = "\n".join([str(r) for r in rules_raw]).strip()
-                        else:
-                            rules_content = str(rules_raw).strip()
-                            
-                        if len(rules_content) > 0:
-                            return RuleOutput(
-                                content=rules_content, 
-                                scope=str(rule_data["scope"]).upper(), 
-                                description=str(desc)
-                            )
-                except json.JSONDecodeError:
-                    pass
+                    if len(rules_content) > 0:
+                        return RuleOutput(
+                            content=rules_content, 
+                            scope=str(best_rule_data["scope"]).upper(), 
+                            description=str(desc)
+                        )
+                except Exception as e:
+                    logger.debug(f"Failed to extract rule fields from JSON: {e}")
 
             if "NO_RULE" in str(response_text):
                 return None

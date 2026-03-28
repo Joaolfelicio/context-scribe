@@ -26,7 +26,7 @@ class GeminiCliProvider(BaseProvider):
 
             for msg in messages:
                 raw_msg_id = msg.get("id") or msg.get("messageId") or str(msg)
-                self.global_processed_ids.add(f"{session_id}_{raw_msg_id}")
+                self._mark_id_processed(f"{session_id}_{raw_msg_id}")
 
     def _parse_file_content(self, temp_path: str, original_path: str):
         # Extract project name from the directory structure
@@ -59,5 +59,5 @@ class GeminiCliProvider(BaseProvider):
                 
                 if msg_id not in self.global_processed_ids:
                     self._extract_interaction(msg, project_name)
-                    self.global_processed_ids.add(msg_id)
+                    self._mark_id_processed(msg_id)
 
