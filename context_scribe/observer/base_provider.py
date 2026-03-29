@@ -7,7 +7,6 @@ import threading
 import time
 from abc import ABC, abstractmethod
 from collections import deque
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Iterator, Optional, Dict, Set
@@ -15,7 +14,7 @@ from typing import Iterator, Optional, Dict, Set
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-from context_scribe.models.evaluator_models import INTERNAL_SIGNATURE
+from context_scribe.models.evaluator_models import INTERNAL_SIGNATURE_UPPER
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +63,7 @@ class BaseProvider(ABC):
         if not self.log_dir.exists():
             return
 
-        print("Initializing historical logs (skipping existing messages)...")
+        logger.info("Initializing historical logs (skipping existing messages)...")
         for file_path in self.log_dir.glob(f"**/*{self.file_extension}"):
             try:
                 self.last_mtimes[str(file_path)] = os.path.getmtime(file_path)
@@ -134,8 +133,8 @@ class BaseProvider(ABC):
         else:
             content = str(raw_content)
 
-        # BREAK THE FEEDBACK LOOP
-        if INTERNAL_SIGNATURE in content.upper():
+        # Break the feedback loop (case-insensitive comparison)
+        if INTERNAL_SIGNATURE_UPPER in content.upper():
             return None
 
         if content.strip() and role == "user":

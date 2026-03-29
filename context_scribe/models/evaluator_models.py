@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 INTERNAL_SIGNATURE = "--- CONTEXT-SCRIBE-INTERNAL-EVALUATION ---"
+INTERNAL_SIGNATURE_UPPER = INTERNAL_SIGNATURE.upper()
 
 @dataclass
 class RuleOutput:
