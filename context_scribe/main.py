@@ -4,6 +4,7 @@ import os
 import shutil
 from pathlib import Path
 from datetime import datetime
+from typing import Optional
 import click
 from rich.console import Console
 from rich.live import Live
@@ -164,19 +165,38 @@ def bootstrap_claude_config() -> None:
             f.write(f"\n{MASTER_RETRIEVAL_RULE}\n")
 
 
-_TOOL_TO_EVALUATOR = {"gemini-cli": "gemini", "copilot": "copilot", "claude": "claude"}
+def _detect_evaluator(preferred_tool: Optional[str] = None) -> str:
+    """Auto-detect which evaluator CLI is available, prioritizing the preferred tool."""
+    # Map tool names to their corresponding CLI commands
+    tool_to_cli = {
+        "copilot": "copilot",
+        "claude": "claude",
+        "gemini-cli": "gemini"
+    }
+    
+    # Map CLI commands back to evaluator names
+    cli_to_evaluator = {
+        "copilot": "copilot",
+        "claude": "claude",
+        "gemini": "gemini"
+    }
 
+    # 1. Try the preferred tool first
+    if preferred_tool in tool_to_cli:
+        cli_cmd = tool_to_cli[preferred_tool]
+        if shutil.which(cli_cmd):
+            return cli_to_evaluator[cli_cmd]
 
-def _detect_evaluator(tool: str = "") -> str:
-    """Auto-detect which evaluator CLI is available, preferring the one matching the tool."""
-    preferred = _TOOL_TO_EVALUATOR.get(tool, "")
-    if preferred and shutil.which(preferred):
-        return preferred
+    # 2. Try other available CLIs in a default order
+    for cli_cmd in ["claude", "copilot", "gemini"]:
+        if shutil.which(cli_cmd):
+            return cli_to_evaluator[cli_cmd]
 
-    for name, cli in [("gemini", "gemini"), ("claude", "claude"), ("copilot", "copilot")]:
-        if shutil.which(cli):
-            return name
-    return "gemini"  # fallback, will error at runtime
+    # 3. Fail fast if no evaluator is found
+    raise click.ClickException(
+        "No supported evaluator CLI found (claude, copilot, or gemini). "
+        "Please install one of these tools to use context-scribe."
+    )
 
 
 def _status(msg: str, db, live, debug: bool):
