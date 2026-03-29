@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import shutil
 from pathlib import Path
 from datetime import datetime
 import click
@@ -163,15 +164,18 @@ def bootstrap_claude_config() -> None:
             f.write(f"\n{MASTER_RETRIEVAL_RULE}\n")
 
 
-def _detect_evaluator() -> str:
-    """Auto-detect which evaluator CLI is available."""
-    import shutil
-    if shutil.which("copilot"):
-        return "copilot"
-    if shutil.which("claude"):
-        return "claude"
-    if shutil.which("gemini"):
-        return "gemini"
+_TOOL_TO_EVALUATOR = {"gemini-cli": "gemini", "copilot": "copilot", "claude": "claude"}
+
+
+def _detect_evaluator(tool: str = "") -> str:
+    """Auto-detect which evaluator CLI is available, preferring the one matching the tool."""
+    preferred = _TOOL_TO_EVALUATOR.get(tool, "")
+    if preferred and shutil.which(preferred):
+        return preferred
+
+    for name, cli in [("gemini", "gemini"), ("claude", "claude"), ("copilot", "copilot")]:
+        if shutil.which(cli):
+            return name
     return "gemini"  # fallback, will error at runtime
 
 
@@ -198,7 +202,7 @@ async def run_daemon(tool: str, bank_path: str, debug: bool = False, evaluator_n
     if not provider: return False
 
     if evaluator_name == "auto":
-        evaluator_name = "claude" if tool == "claude" else _detect_evaluator()
+        evaluator_name = _detect_evaluator(tool)
     evaluator = (
         ClaudeEvaluator() if evaluator_name == "claude"
         else CopilotEvaluator() if evaluator_name == "copilot"
@@ -279,7 +283,7 @@ async def run_daemon(tool: str, bank_path: str, debug: bool = False, evaluator_n
     return True
 
 @click.command()
-@click.option('--tool', default='copilot', type=click.Choice(['gemini-cli', 'copilot', 'claude']), help='The AI tool to monitor')
+@click.option('--tool', default='gemini-cli', type=click.Choice(['gemini-cli', 'copilot', 'claude']), help='The AI tool to monitor')
 @click.option('--bank-path', default='~/.memory-bank', help='Path to your Memory Bank root')
 @click.option('--evaluator', 'evaluator_name', default='auto', type=click.Choice(['auto', 'copilot', 'claude', 'gemini']), help='Evaluator LLM to use (default: auto-detect)')
 @click.option('--debug', is_flag=True, default=False, help='Stream plain debug logs instead of dashboard UI')

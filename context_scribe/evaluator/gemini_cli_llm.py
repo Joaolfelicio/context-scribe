@@ -15,14 +15,13 @@ class GeminiCliEvaluator(BaseEvaluator):
             logger.warning("Gemini CLI not found.")
 
     def _execute_cli(self, prompt: str) -> str:
-        # SPEED OPTIMIZED CLI CALL:
+        # Prompt is passed via stdin to avoid shell argument length limits
         result = subprocess.run(
             [
-                "gemini", 
+                "gemini",
                 "--model", "gemini-2.5-flash-lite",
-                "--prompt", "", 
                 "--output-format", "json"
-            ], 
+            ],
             input=prompt,
             capture_output=True, 
             text=True,

@@ -9,7 +9,7 @@ from typing import Iterator, Optional
 
 from watchdog.observers import Observer
 
-from context_scribe.models.evaluator_models import INTERNAL_SIGNATURE
+from context_scribe.models.evaluator_models import INTERNAL_SIGNATURE_UPPER
 from context_scribe.models.interaction import Interaction
 from context_scribe.observer.base_provider import BaseProvider, GenericLogHandler
 
@@ -176,7 +176,7 @@ class CopilotProvider(BaseProvider):
                         content = event.get("data", {}).get("content", "").strip()
                         if not content:
                             continue
-                        if INTERNAL_SIGNATURE in content.upper():
+                        if INTERNAL_SIGNATURE_UPPER in content.upper():
                             continue
 
                         self._mark_id_processed(event_id)
