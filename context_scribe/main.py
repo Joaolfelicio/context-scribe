@@ -234,7 +234,7 @@ async def run_daemon(tool: str, bank_path: str, debug: bool = False, evaluator_n
         await mcp_client.connect()
     except Exception:
         console.print("[bold red]Fatal Error: Could not connect to the Memory Bank MCP server.[/bold red]")
-        os._exit(1)
+        raise SystemExit(1)
 
     db = Dashboard(tool, bank_path)
 

@@ -1,13 +1,7 @@
 import json
-import logging
-from datetime import datetime
 from pathlib import Path
 
-from context_scribe.models.evaluator_models import INTERNAL_SIGNATURE
-from context_scribe.models.interaction import Interaction
 from context_scribe.observer.base_provider import BaseProvider
-
-logger = logging.getLogger(__name__)
 
 class GeminiCliProvider(BaseProvider):
     def __init__(self, log_dir: str = "~/.gemini/tmp/"):

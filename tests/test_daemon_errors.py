@@ -20,15 +20,13 @@ async def test_run_daemon_mcp_connection_failure():
                     with patch("context_scribe.main.Dashboard") as mock_db_class:
                         # Ensure generate_layout returns something simple
                         mock_db_class.return_value.generate_layout.return_value = MagicMock()
-                        
-                        with patch("os._exit", side_effect=SystemExit(1)) as mock_exit:
-                            with patch("context_scribe.main.Live") as mock_live:
-                                # Make the context manager work
-                                mock_live.return_value.__enter__.return_value = MagicMock()
-                                with pytest.raises(SystemExit):
-                                    await run_daemon("gemini-cli", "~/.memory-bank")
-                                mock_exit.assert_called_once_with(1)
 
+                        with patch("context_scribe.main.Live") as mock_live:
+                            # Make the context manager work
+                            mock_live.return_value.__enter__.return_value = MagicMock()
+                            with pytest.raises(SystemExit) as exc_info:
+                                await run_daemon("gemini-cli", "~/.memory-bank")
+                            assert exc_info.value.code == 1
 def test_cli_rejects_unsupported_tool():
     """click.Choice validation rejects unsupported tool values."""
     from click.testing import CliRunner

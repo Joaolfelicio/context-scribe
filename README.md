@@ -29,7 +29,7 @@ The Evaluator will autonomously detect that these are long-term preferences, pro
 Context-Scribe operates on an **Observer-Evaluator-Bridge** pattern. See the [full architecture diagram and workflow details](docs/architecture.md) for more information.
 
 1.  **Observer**: A robust `watchdog` powered log monitor with manual periodic scanning ensuring zero missed events across various Gemini log formats.
-2.  **Evaluator**: Headless evaluation powered by your local `gemini` or `claude` CLI.
+2.  **Evaluator**: Headless evaluation powered by your local `gemini`, `claude`, or `copilot` evaluator backends.
 3.  **Bridge**: Direct MCP integration syncing data into `@allpepper/memory-bank-mcp`.
 
 ## 🤖 Supported AI Tools

@@ -48,7 +48,7 @@ class MyToolProvider(BaseProvider):
         # 3. For each new message, call:
         # self._extract_interaction(msg_dict, project_name)
         # 4. Track processed IDs:
-        # self.global_processed_ids.add(unique_msg_id)
+        # self._mark_id_processed(unique_msg_id)
 ```
 
 ### 2. Implement Bootstrapping (Optional)
