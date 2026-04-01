@@ -29,7 +29,7 @@ The Evaluator will autonomously detect that these are long-term preferences, pro
 Context-Scribe operates on an **Observer-Evaluator-Bridge** pattern. See the [full architecture diagram and workflow details](docs/architecture.md) for more information.
 
 1.  **Observer**: A robust `watchdog` powered log monitor with manual periodic scanning ensuring zero missed events across various Gemini log formats.
-2.  **Evaluator**: Headless evaluation powered by your local `gemini` CLI (no extra API keys required).
+2.  **Evaluator**: Headless evaluation powered by your local `gemini`, `claude`, or `copilot` evaluator backends.
 3.  **Bridge**: Direct MCP integration syncing data into `@allpepper/memory-bank-mcp`.
 
 ## 🤖 Supported AI Tools
@@ -45,7 +45,7 @@ Context-Scribe uses a **Provider Pattern** to support multiple AI tools:
 ## 📋 Prerequisites
 
 *   **Python 3.10+**
-*   **Gemini CLI**: Required when using `--tool gemini`. The daemon uses your local `gemini` CLI installation for headless evaluation.
+*   **Gemini CLI**: Required when using `--tool gemini-cli`. The daemon uses your local `gemini` CLI installation for headless evaluation.
 *   **GitHub Copilot** (optional): VS Code with the GitHub Copilot Chat extension installed, if using `--tool copilot`.
 *   **Claude Code CLI**: Required when using `--tool claude`. Install from the [Claude Code documentation](https://docs.anthropic.com/en/docs/claude-code).
 *   **Memory Bank MCP**: Your AI tool **must** have the `@allpepper/memory-bank-mcp` server configured.
@@ -71,21 +71,19 @@ Context-Scribe uses a **Provider Pattern** to support multiple AI tools:
 Start the daemon using the default Memory Bank location (`~/.memory-bank`):
 ```bash
 # Monitor Gemini CLI sessions
-context-scribe --tool gemini
+context-scribe --tool gemini-cli
 
 # Monitor Claude Code sessions
 context-scribe --tool claude
-```
 
-For GitHub Copilot:
-```bash
+# Monitor Copilot sessions
 context-scribe --tool copilot
 ```
 
 ### 2. Custom Memory Bank Location
 If your AI tool's MCP server is configured to use a non-default root directory, you **must** pass that path to Context-Scribe:
 ```bash
-context-scribe --tool gemini --bank-path "/path/to/your/custom-bank"
+context-scribe --tool gemini-cli --bank-path "/path/to/your/custom-bank"
 ```
 
 > [!CAUTION]
@@ -102,7 +100,7 @@ pytest --cov=context_scribe tests/
 
 ### Manual Interaction Test
 
-1.  **Start the daemon**: `context-scribe --tool gemini`
+1.  **Start the daemon**: `context-scribe --tool gemini-cli`
 
 2.  **Simulate an interaction**: 
     ```bash

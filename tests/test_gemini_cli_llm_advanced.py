@@ -1,10 +1,10 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from context_scribe.evaluator.llm import Evaluator
-from context_scribe.observer.provider import Interaction
+from context_scribe.evaluator.gemini_cli_llm import GeminiCliEvaluator
+from context_scribe.models.interaction import Interaction
 
 def test_evaluator_malformed_json_fallback():
-    evaluator = Evaluator()
+    evaluator = GeminiCliEvaluator()
     mock_interaction = Interaction(timestamp=None, role="user", content="msg", project_name="p")
     
     with patch("subprocess.run") as mock_run:
@@ -18,7 +18,7 @@ def test_evaluator_malformed_json_fallback():
         assert result.scope == "PROJECT"
 
 def test_evaluator_no_json_at_all_global_fallback():
-    evaluator = Evaluator()
+    evaluator = GeminiCliEvaluator()
     mock_interaction = Interaction(timestamp=None, role="user", content="msg", project_name="p")
     
     with patch("subprocess.run") as mock_run:

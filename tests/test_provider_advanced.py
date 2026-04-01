@@ -3,7 +3,7 @@ import shutil
 import pytest
 from unittest.mock import MagicMock, patch
 from pathlib import Path
-from context_scribe.observer.gemini_provider import GeminiProvider
+from context_scribe.observer.gemini_cli_provider import GeminiCliProvider
 
 def test_provider_initialization_with_existing_logs(tmp_path):
     # Setup mock log dir
@@ -13,13 +13,13 @@ def test_provider_initialization_with_existing_logs(tmp_path):
     session_file.write_text('{"sessionId": "s1", "messages": [{"id": "m1", "text": "test"}]}')
     
     with patch("os.path.expanduser", return_value=str(log_dir)):
-        provider = GeminiProvider(log_dir=str(log_dir))
+        provider = GeminiCliProvider(log_dir=str(log_dir))
         assert "s1_m1" in provider.global_processed_ids
 
 def test_process_file_new_message(tmp_path):
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
-    provider = GeminiProvider(log_dir=str(log_dir))
+    provider = GeminiCliProvider(log_dir=str(log_dir))
     
     file_path = log_dir / "new_session.json"
     file_path.write_text('{"sessionId": "s2", "messages": [{"id": "m2", "type": "user", "text": "New Rule"}]}')
@@ -33,7 +33,7 @@ def test_process_file_new_message(tmp_path):
 def test_project_name_detection(tmp_path):
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
-    provider = GeminiProvider(log_dir=str(log_dir))
+    provider = GeminiCliProvider(log_dir=str(log_dir))
     
     # Global file (direct in tmp)
     global_file = log_dir / "logs.json"

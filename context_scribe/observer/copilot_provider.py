@@ -1,85 +1,54 @@
 import json
 import logging
 import os
-import shutil
-import tempfile
 import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Iterator, Dict, Optional, Set
+from typing import Iterator, Optional
 
-from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-from context_scribe.observer.provider import Interaction, BaseProvider
+from context_scribe.models.evaluator_models import INTERNAL_SIGNATURE_UPPER
+from context_scribe.models.interaction import Interaction
+from context_scribe.observer.base_provider import BaseProvider, GenericLogHandler
 
 logger = logging.getLogger(__name__)
 
 
-class CopilotLogHandler(FileSystemEventHandler):
-    def __init__(self, callback):
-        super().__init__()
-        self.callback = callback
-
-    def on_modified(self, event):
-        if event.is_directory:
-            return
-        if event.src_path.endswith(".json"):
-            self.callback(event.src_path)
-
-    def on_created(self, event):
-        if event.is_directory:
-            return
-        if event.src_path.endswith(".json"):
-            self.callback(event.src_path)
-
-
 class CopilotProvider(BaseProvider):
-    _MAX_PROCESSED_IDS = 10000
+    """Watches both VS Code Copilot Chat logs and Copilot CLI session events."""
 
-    def __init__(self, log_dir: str = "~/.config/github-copilot/chat/"):
-        self.log_dir = Path(os.path.expanduser(log_dir))
-        self.interaction_queue = []
-        # Track processed message IDs globally across all files to avoid duplicates
-        self.global_processed_ids: Set[str] = set()
-        # Track file mtimes to detect changes
-        self.last_mtimes: Dict[str, float] = {}
-        self._lock = threading.Lock()
+    def __init__(
+        self,
+        log_dir: str = "~/.config/github-copilot/chat/",
+        cli_log_dir: str = "~/.copilot/session-state/",
+    ):
+        super().__init__(log_dir=log_dir, file_extension=".json")
+        self.cli_log_dir = Path(os.path.expanduser(cli_log_dir))
+        self._cli_project_name_cache: dict = {}   # file_path -> project_name
+        self._cli_file_offsets: dict = {}          # file_path -> last byte offset read
         self._initialize_historical_logs()
+        self._initialize_cli_historical_logs()
 
-    def _initialize_historical_logs(self):
-        """Skip all messages existing before the daemon starts."""
-        if not self.log_dir.exists():
-            return
+    # ------------------------------------------------------------------ #
+    # VS Code Copilot Chat (JSON files)                                   #
+    # ------------------------------------------------------------------ #
 
-        print("Initializing historical logs (skipping existing messages)...")
-        for file_path in self.log_dir.glob("**/*.json"):
-            try:
-                self.last_mtimes[str(file_path)] = os.path.getmtime(file_path)
-                with open(file_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    messages = self._get_messages_from_data(data)
-
-                    if isinstance(data, dict):
-                        session_id = data.get("sessionId") or data.get("id") or "unknown"
-                    else:
-                        session_id = "unknown"
-
-                    for msg in messages:
-                        raw_msg_id = msg.get("id") or msg.get("messageId") or str(msg)
-                        self.global_processed_ids.add(f"{session_id}_{raw_msg_id}")
-            except (json.JSONDecodeError, OSError) as e:
-                logger.debug("Failed to initialize historical log %s: %s", file_path, e)
+    def _parse_historical_file(self, file_path: str):
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            messages = self._get_messages_from_data(data)
+            if isinstance(data, dict):
+                session_id = data.get("sessionId") or data.get("id") or "unknown"
+            else:
+                session_id = "unknown"
+            for msg in messages:
+                raw_msg_id = msg.get("id") or msg.get("messageId") or str(msg)
+                self._mark_id_processed(f"{session_id}_{raw_msg_id}")
 
     def _get_messages_from_data(self, data) -> list:
-        """Extracts a list of message objects from various possible JSON structures.
-
-        Supports multiple Copilot log formats:
-        - turns format: {"turns": [{"request": {...}, "response": {...}}, ...]}
-        - messages format: {"messages": [{"role": "user", "content": "..."}, ...]}
-        - list format: [{"role": "user", "content": "..."}, ...]
-        """
+        """Extracts a list of message objects from VS Code Copilot Chat JSON structures."""
         if isinstance(data, dict):
             if "turns" in data:
                 messages = []
@@ -104,117 +73,204 @@ class CopilotProvider(BaseProvider):
             return data
         return []
 
-    def _process_file(self, file_path: str):
-        with self._lock:
-            # Extract project name from the directory structure
-            try:
-                path_obj = Path(file_path)
-                rel_path = path_obj.relative_to(self.log_dir)
-                if len(rel_path.parts) == 1:
-                    project_name = "global"
-                else:
-                    project_name = rel_path.parts[0]
-            except ValueError:
-                project_name = "global"
+    def _parse_file_content(self, temp_path: str, original_path: str):
+        try:
+            path_obj = Path(original_path)
+            rel_path = path_obj.relative_to(self.log_dir)
+            project_name = rel_path.parts[0] if len(rel_path.parts) > 1 else "global"
+        except ValueError:
+            project_name = "global"
 
-            fd, temp_path = tempfile.mkstemp(suffix=".snapshot")
-            try:
-                os.close(fd)
-                shutil.copy2(file_path, temp_path)
-                with open(temp_path, "r", encoding="utf-8") as f:
-                    content = f.read().strip()
-                    if not content:
-                        return
-                    data = json.loads(content)
-                    messages = self._get_messages_from_data(data)
+        with open(temp_path, "r", encoding="utf-8") as f:
+            content = f.read().strip()
+            if not content:
+                return
+            data = json.loads(content)
+            messages = self._get_messages_from_data(data)
+            if isinstance(data, dict):
+                session_id = data.get("sessionId") or data.get("id") or "unknown"
+            else:
+                session_id = "unknown"
 
-                    if isinstance(data, dict):
-                        session_id = data.get("sessionId") or data.get("id") or "unknown"
-                    else:
-                        session_id = "unknown"
+            for msg in messages:
+                raw_msg_id = msg.get("id") or msg.get("messageId") or str(msg)
+                msg_id = f"{session_id}_{raw_msg_id}"
+                if msg_id not in self.global_processed_ids:
+                    self._extract_interaction(msg, project_name)
+                    self._mark_id_processed(msg_id)
 
-                    for msg in messages:
-                        raw_msg_id = msg.get("id") or msg.get("messageId") or str(msg)
-                        msg_id = f"{session_id}_{raw_msg_id}"
+    # ------------------------------------------------------------------ #
+    # Copilot CLI (events.jsonl files under session-state/)               #
+    # ------------------------------------------------------------------ #
 
-                        if msg_id not in self.global_processed_ids:
-                            self._extract_interaction(msg, project_name)
-                            self.global_processed_ids.add(msg_id)
+    def _get_cli_project_name(self, file_path: str) -> str:
+        """Derive project name from session.start cwd in an events.jsonl file."""
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    event = json.loads(line)
+                    if event.get("type") == "session.start":
+                        cwd = event.get("data", {}).get("context", {}).get("cwd", "")
+                        if cwd:
+                            return Path(cwd).name or "global"
+                        break
+        except (json.JSONDecodeError, OSError):
+            pass
+        return "global"
 
-                    # Cap global_processed_ids to prevent unbounded growth
-                    if len(self.global_processed_ids) > self._MAX_PROCESSED_IDS:
-                        self.global_processed_ids.clear()
-            except (json.JSONDecodeError, OSError) as e:
-                logger.debug("Failed to process file %s: %s", file_path, e)
-            finally:
-                if os.path.exists(temp_path):
-                    try:
-                        os.remove(temp_path)
-                    except OSError as e:
-                        logger.debug("Failed to remove temp file %s: %s", temp_path, e)
-
-    def _extract_interaction(self, data: dict, project_name: str):
-        role = data.get("role") or data.get("type") or "unknown"
-        raw_content = data.get("content") or data.get("message") or data.get("text") or ""
-
-        if isinstance(raw_content, list):
-            text_parts = []
-            for part in raw_content:
-                if isinstance(part, dict):
-                    text_parts.append(part.get("text", ""))
-                else:
-                    text_parts.append(str(part))
-            content = "\n".join(text_parts)
-        else:
-            content = str(raw_content)
-
-        # BREAK THE FEEDBACK LOOP
-        if "--- CONTEXT-SCRIBE-INTERNAL-EVALUATION ---" in content.upper() or "CONTEXT-SCRIBE-INTERNAL-EVALUATION" in content:
+    def _initialize_cli_historical_logs(self):
+        """Mark existing Copilot CLI event IDs as seen so we don't reprocess them."""
+        if not self.cli_log_dir.exists():
             return
+        logger.info("Initializing Copilot CLI historical logs...")
+        for file_path in self.cli_log_dir.glob("*/events.jsonl"):
+            key = str(file_path)
+            try:
+                self.last_mtimes[key] = os.path.getmtime(file_path)
+                with open(file_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            event = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        if event.get("type") == "user.message":
+                            self._mark_id_processed(event.get("id", str(event)))
+                    # Record offset so _parse_cli_file only reads new lines
+                    self._cli_file_offsets[key] = f.tell()
+            except OSError as e:
+                logger.debug("Failed to init CLI log %s: %s", file_path, e)
 
-        if content.strip() and role == "user":
-            self.interaction_queue.append(
-                Interaction(
-                    timestamp=datetime.now(),
-                    role=role,
-                    content=content,
-                    project_name=project_name,
-                    metadata=data
-                )
-            )
+    def _parse_cli_file(self, file_path: str):
+        """Process only new user.message events appended to a Copilot CLI events.jsonl."""
+        with self._lock:
+            key = str(file_path)
+            if key not in self._cli_project_name_cache:
+                self._cli_project_name_cache[key] = self._get_cli_project_name(file_path)
+            project_name = self._cli_project_name_cache[key]
+            offset = self._cli_file_offsets.get(key, 0)
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    f.seek(offset)
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            event = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+
+                        if event.get("type") != "user.message":
+                            continue
+
+                        event_id = event.get("id", str(event))
+                        if event_id in self.global_processed_ids:
+                            continue
+
+                        content = event.get("data", {}).get("content", "").strip()
+                        if not content:
+                            continue
+                        if INTERNAL_SIGNATURE_UPPER in content.upper():
+                            continue
+
+                        self._mark_id_processed(event_id)
+
+                        try:
+                            ts_raw = event.get("timestamp", "")
+                            ts = datetime.fromisoformat(ts_raw.replace("Z", "+00:00")) if ts_raw else datetime.now()
+                        except (ValueError, AttributeError):
+                            ts = datetime.now()
+                        self.interaction_queue.append(
+                            Interaction(
+                                timestamp=ts,
+                                role="user",
+                                content=content,
+                                project_name=project_name,
+                                metadata=event.get("data", {}),
+                            )
+                        )
+                        logger.debug("CLI event queued: %s (project=%s)", event_id[:8], project_name)
+                    self._cli_file_offsets[key] = f.tell()
+            except OSError as e:
+                logger.debug("Failed to read CLI log %s: %s", file_path, e)
+
+    # ------------------------------------------------------------------ #
+    # Dual-path watch loop                                                #
+    # ------------------------------------------------------------------ #
 
     def watch(self) -> Iterator[Optional[Interaction]]:
-        if not self.log_dir.exists():
-            self.log_dir.mkdir(parents=True, exist_ok=True)
+        # Ensure VS Code chat dir exists
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        # Ensure CLI session-state dir exists
+        self.cli_log_dir.mkdir(parents=True, exist_ok=True)
 
-        event_handler = CopilotLogHandler(self._process_file)
-        observer = Observer()
-        observer.schedule(event_handler, str(self.log_dir), recursive=True)
-        observer.start()
+        # Observer for VS Code Copilot Chat (.json)
+        chat_handler = GenericLogHandler(self.file_extension, self._process_file)
+        chat_observer = Observer()
+        chat_observer.schedule(chat_handler, str(self.log_dir), recursive=True)
+        chat_observer.start()
+
+        # Observer for Copilot CLI (events.jsonl)
+        cli_handler = GenericLogHandler(".jsonl", self._parse_cli_file)
+        cli_observer = Observer()
+        cli_observer.schedule(cli_handler, str(self.cli_log_dir), recursive=True)
+        cli_observer.start()
+
+        logger.debug("Watching VS Code chat: %s", self.log_dir)
+        logger.debug("Watching Copilot CLI:  %s", self.cli_log_dir)
+
+        last_scan_time = 0
+        scan_interval = 60  # Safety-net scan once per minute
 
         try:
             while True:
-                for file_path in self.log_dir.glob("**/*.json"):
-                    try:
-                        mtime = os.path.getmtime(file_path)
-                        if str(file_path) not in self.last_mtimes or mtime > self.last_mtimes.get(str(file_path), 0):
-                            self.last_mtimes[str(file_path)] = mtime
-                            self._process_file(str(file_path))
-                    except OSError as e:
-                        logger.debug("Failed to check mtime for %s: %s", file_path, e)
+                current_time = time.time()
+                if current_time - last_scan_time > scan_interval:
+                    # Periodic scan — VS Code chat JSON files
+                    for file_path in self.log_dir.glob("**/*.json"):
+                        try:
+                            mtime = os.path.getmtime(file_path)
+                            key = str(file_path)
+                            if key not in self.last_mtimes or mtime > self.last_mtimes[key]:
+                                self.last_mtimes[key] = mtime
+                                self._process_file(str(file_path))
+                        except OSError as e:
+                            logger.debug("mtime check failed %s: %s", file_path, e)
+
+                    # Periodic scan — Copilot CLI events.jsonl files
+                    for file_path in self.cli_log_dir.glob("*/events.jsonl"):
+                        try:
+                            mtime = os.path.getmtime(file_path)
+                            key = str(file_path)
+                            if key not in self.last_mtimes or mtime > self.last_mtimes[key]:
+                                self.last_mtimes[key] = mtime
+                                self._parse_cli_file(str(file_path))
+                        except OSError as e:
+                            logger.debug("mtime check failed %s: %s", file_path, e)
+                    last_scan_time = current_time
 
                 if not self.interaction_queue:
                     yield None
                     time.sleep(1)
                     continue
 
-                while self.interaction_queue:
-                    yield self.interaction_queue.pop(0)
+                with self._lock:
+                    while self.interaction_queue:
+                        yield self.interaction_queue.pop(0)
+
         except KeyboardInterrupt:
             pass
         finally:
-            try:
-                observer.stop()
-            except Exception:
-                logger.debug("Error stopping observer")
-            observer.join()
+            for obs in (chat_observer, cli_observer):
+                try:
+                    obs.stop()
+                except Exception:
+                    pass
+                obs.join()
+

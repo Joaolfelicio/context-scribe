@@ -1,5 +1,6 @@
 import json
 from context_scribe.observer.claude_provider import ClaudeProvider
+from context_scribe.models.evaluator_models import INTERNAL_SIGNATURE
 
 
 def test_get_messages_from_file_jsonl_format(tmp_path):
@@ -99,14 +100,14 @@ def test_extract_interaction_internal_loop_filter():
     # Should skip internal evaluation messages
     provider._extract_interaction({
         "role": "user",
-        "content": "--- CONTEXT-SCRIBE-INTERNAL-EVALUATION ---\nDo something"
+        "content": f"{INTERNAL_SIGNATURE}\nDo something"
     }, "test-project")
     assert len(provider.interaction_queue) == 0
 
     # Also test mixed-case variant (case-insensitive filter)
     provider._extract_interaction({
         "role": "user",
-        "content": "--- Context-Scribe-Internal-Evaluation ---\nDo something"
+        "content": f"{INTERNAL_SIGNATURE.title()}\nDo something"
     }, "test-project")
     assert len(provider.interaction_queue) == 0
 

@@ -1,14 +1,14 @@
 from context_scribe.main import Dashboard
 
 def test_dashboard_initialization():
-    db = Dashboard("gemini", "~/.memory-bank")
-    assert db.tool == "gemini"
+    db = Dashboard("gemini-cli", "~/.memory-bank")
+    assert db.tool == "gemini-cli"
     assert db.bank_path == "~/.memory-bank"
     assert db.update_count == 0
     assert len(db.history) == 0
 
 def test_dashboard_add_history():
-    db = Dashboard("gemini", "~/.memory-bank")
+    db = Dashboard("gemini-cli", "~/.memory-bank")
     db.add_history("global/global_rules.md", "Added rule")
     assert db.update_count == 1
     assert len(db.history) == 1
@@ -16,7 +16,7 @@ def test_dashboard_add_history():
     assert db.history[0][2] == "Added rule"
 
 def test_dashboard_history_limit():
-    db = Dashboard("gemini", "~/.memory-bank")
+    db = Dashboard("gemini-cli", "~/.memory-bank")
     for i in range(15):
         db.add_history(f"file_{i}.md", f"desc_{i}")
     assert len(db.history) == 10

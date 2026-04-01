@@ -1,8 +1,10 @@
 import asyncio
+import logging
 import os
-import sys
+import shutil
 from pathlib import Path
 from datetime import datetime
+from typing import Optional
 import click
 from rich.console import Console
 from rich.live import Live
@@ -12,14 +14,15 @@ from rich.layout import Layout
 from rich.table import Table
 from rich.spinner import Spinner
 
-from context_scribe.observer.gemini_provider import GeminiProvider
+from context_scribe.observer.gemini_cli_provider import GeminiCliProvider
 from context_scribe.observer.copilot_provider import CopilotProvider
 from context_scribe.observer.claude_provider import ClaudeProvider
-from context_scribe.evaluator.llm import Evaluator
+from context_scribe.evaluator.gemini_cli_llm import GeminiCliEvaluator
 from context_scribe.evaluator.claude_llm import ClaudeEvaluator
+from context_scribe.evaluator.copilot_llm import CopilotEvaluator
 from context_scribe.bridge.mcp_client import MemoryBankClient
-from context_scribe.observer.provider import Interaction, BaseProvider
 
+logger = logging.getLogger("context_scribe")
 console: Console = Console()
 
 MASTER_RETRIEVAL_RULE = """
@@ -162,10 +165,52 @@ def bootstrap_claude_config() -> None:
             f.write(f"\n{MASTER_RETRIEVAL_RULE}\n")
 
 
-async def run_daemon(tool: str, bank_path: str) -> bool:
-    if tool == "gemini":
+def _detect_evaluator(preferred_tool: Optional[str] = None) -> str:
+    """Auto-detect which evaluator CLI is available, prioritizing the preferred tool."""
+    # Map tool names to their corresponding CLI commands
+    tool_to_cli = {
+        "copilot": "copilot",
+        "claude": "claude",
+        "gemini-cli": "gemini"
+    }
+    
+    # Map CLI commands back to evaluator names
+    cli_to_evaluator = {
+        "copilot": "copilot",
+        "claude": "claude",
+        "gemini": "gemini"
+    }
+
+    # 1. Try the preferred tool first
+    if preferred_tool in tool_to_cli:
+        cli_cmd = tool_to_cli[preferred_tool]
+        if shutil.which(cli_cmd):
+            return cli_to_evaluator[cli_cmd]
+
+    # 2. Try other available CLIs in a default order
+    for cli_cmd in ["claude", "copilot", "gemini"]:
+        if shutil.which(cli_cmd):
+            return cli_to_evaluator[cli_cmd]
+
+    # 3. Fail fast if no evaluator is found
+    raise click.ClickException(
+        "No supported evaluator CLI found (claude, copilot, or gemini). "
+        "Please install one of these tools to use context-scribe."
+    )
+
+
+def _status(msg: str, db, live, debug: bool):
+    db.status = msg
+    if debug:
+        logging.getLogger("context_scribe").info(msg)
+    elif live:
+        live.update(db.generate_layout())
+
+
+async def run_daemon(tool: str, bank_path: str, debug: bool = False, evaluator_name: str = "auto") -> bool:
+    if tool == "gemini-cli":
         bootstrap_global_config()
-        provider = GeminiProvider()
+        provider = GeminiCliProvider()
     elif tool == "copilot":
         bootstrap_copilot_config()
         provider = CopilotProvider()
@@ -176,48 +221,51 @@ async def run_daemon(tool: str, bank_path: str) -> bool:
         provider = None
     if not provider: return False
 
-    evaluator = ClaudeEvaluator() if tool == "claude" else Evaluator()
+    if evaluator_name == "auto":
+        evaluator_name = _detect_evaluator(tool)
+    evaluator = (
+        ClaudeEvaluator() if evaluator_name == "claude"
+        else CopilotEvaluator() if evaluator_name == "copilot"
+        else GeminiCliEvaluator()
+    )
     mcp_client = MemoryBankClient(bank_path=bank_path)
-    
+
     try:
         await mcp_client.connect()
     except Exception:
         console.print("[bold red]Fatal Error: Could not connect to the Memory Bank MCP server.[/bold red]")
-        os._exit(1)
+        raise SystemExit(1)
 
     db = Dashboard(tool, bank_path)
-    with Live(db.generate_layout(), refresh_per_second=10, screen=True) as live:
+
+    async def _loop(live=None):
         try:
             loop = asyncio.get_event_loop()
             watch_iter = provider.watch()
-            db.status = "🔍 Watching log stream..."
+            _status("🔍 Watching log stream...", db, live, debug)
 
             while True:
-                live.update(db.generate_layout())
+                if live: live.update(db.generate_layout())
                 interaction = await loop.run_in_executor(None, next, watch_iter)
                 if interaction is None:
                     continue
-                
-                db.status = f"🤔 Analyzing user message ({interaction.project_name})"
-                live.update(db.generate_layout())
-                
-                # Reading bank
-                db.status = f"📖 Accessing Memory Bank ({interaction.project_name})..."
-                live.update(db.generate_layout())
+
+                _status(f"🤔 Analyzing user message ({interaction.project_name})", db, live, debug)
+                if debug:
+                    logging.getLogger("context_scribe").info("  content: %s", interaction.content[:120])
+
+                _status(f"📖 Accessing Memory Bank ({interaction.project_name})...", db, live, debug)
                 existing_global = await mcp_client.read_rules("global", "global_rules.md")
                 existing_project = await mcp_client.read_rules(interaction.project_name, "rules.md")
-                
-                # Evaluating
-                db.status = f"🧠 Thinking: Extracting rules for {interaction.project_name}..."
-                live.update(db.generate_layout())
+
+                _status(f"🧠 Thinking: Extracting rules for {interaction.project_name}...", db, live, debug)
                 rule_output = await loop.run_in_executor(None, evaluator.evaluate_interaction, interaction, existing_global, existing_project)
-                
+
                 if rule_output:
                     dest_proj = "global" if rule_output.scope == "GLOBAL" else interaction.project_name
                     dest_file = "global_rules.md" if rule_output.scope == "GLOBAL" else "rules.md"
                     dest_path = f"{dest_proj}/{dest_file}"
-                    
-                    # Deduplicate content lines
+
                     lines = rule_output.content.splitlines()
                     seen = set()
                     unique_lines = []
@@ -228,34 +276,43 @@ async def run_daemon(tool: str, bank_path: str) -> bool:
                         unique_lines.append(line)
                         if stripped.startswith("-"):
                             seen.add(stripped)
-                    
                     deduped_content = "\n".join(unique_lines).strip()
 
-                    db.status = f"📝 Committing: {dest_path}"
-                    live.update(db.generate_layout())
+                    _status(f"📝 Committing: {dest_path}", db, live, debug)
                     await mcp_client.save_rule(deduped_content, dest_proj, dest_file)
-                    
+
                     db.add_history(dest_path, rule_output.description)
-                    db.status = f"✅ SUCCESS: Updated {dest_path}"
-                    live.update(db.generate_layout())
-                    console.print(f"[bold green]▶ UPDATED:[/bold green] [cyan]{dest_path}[/cyan] ({rule_output.description})")
+                    _status(f"✅ SUCCESS: Updated {dest_path}", db, live, debug)
+                    if not debug:
+                        console.print(f"[bold green]▶ UPDATED:[/bold green] [cyan]{dest_path}[/cyan] ({rule_output.description})")
+                    else:
+                        logger.info("UPDATED: %s (%s)", dest_path, rule_output.description)
                     await asyncio.sleep(2)
-                
-                db.status = "🔍 Watching log stream..."
+
+                _status("🔍 Watching log stream...", db, live, debug)
         except (KeyboardInterrupt, asyncio.CancelledError):
-            db.status = "🛑 Stopping..."
-            live.update(db.generate_layout())
+            _status("🛑 Stopping...", db, live, debug)
         finally:
             await mcp_client.close()
+
+    if debug:
+        await _loop()
+    else:
+        with Live(db.generate_layout(), refresh_per_second=10, screen=True) as live:
+            await _loop(live)
     return True
 
 @click.command()
-@click.option('--tool', default='gemini', type=click.Choice(['gemini', 'copilot', 'claude']), help='The AI tool to monitor')
+@click.option('--tool', default='gemini-cli', type=click.Choice(['gemini-cli', 'copilot', 'claude']), help='The AI tool to monitor')
 @click.option('--bank-path', default='~/.memory-bank', help='Path to your Memory Bank root')
-def cli(tool, bank_path):
+@click.option('--evaluator', 'evaluator_name', default='auto', type=click.Choice(['auto', 'copilot', 'claude', 'gemini']), help='Evaluator LLM to use (default: auto-detect)')
+@click.option('--debug', is_flag=True, default=False, help='Stream plain debug logs instead of dashboard UI')
+def cli(tool, bank_path, evaluator_name, debug):
     """Context-Scribe: Persistent Secretary Daemon"""
+    if debug:
+        logging.basicConfig(level=logging.DEBUG, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
     try:
-        asyncio.run(run_daemon(tool, bank_path))
+        asyncio.run(run_daemon(tool, bank_path, debug=debug, evaluator_name=evaluator_name))
     except KeyboardInterrupt:
         pass
 
