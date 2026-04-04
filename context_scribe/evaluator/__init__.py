@@ -14,10 +14,10 @@ EVALUATOR_REGISTRY: dict[str, type[BaseEvaluator]] = {
 
 
 def get_evaluator(name: str) -> BaseEvaluator:
-    """Return an evaluator instance by name. Raises KeyError for unknown names."""
+    """Return an evaluator instance by name. Raises ValueError for unknown names."""
     cls = EVALUATOR_REGISTRY.get(name)
     if cls is None:
-        raise KeyError(
+        raise ValueError(
             f"Unknown evaluator '{name}'. "
             f"Available: {', '.join(sorted(EVALUATOR_REGISTRY))}"
         )
