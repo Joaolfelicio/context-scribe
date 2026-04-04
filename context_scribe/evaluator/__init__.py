@@ -13,7 +13,7 @@ EVALUATOR_REGISTRY: dict[str, type[BaseEvaluator]] = {
 }
 
 
-def get_evaluator(name: str) -> BaseEvaluator:
+def get_evaluator(name: str, **kwargs) -> BaseEvaluator:
     """Return an evaluator instance by name. Raises ValueError for unknown names."""
     cls = EVALUATOR_REGISTRY.get(name)
     if cls is None:
@@ -21,7 +21,7 @@ def get_evaluator(name: str) -> BaseEvaluator:
             f"Unknown evaluator '{name}'. "
             f"Available: {', '.join(sorted(EVALUATOR_REGISTRY))}"
         )
-    return cls()
+    return cls(**kwargs)
 
 
 __all__ = [
