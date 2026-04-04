@@ -17,9 +17,7 @@ from rich.spinner import Spinner
 from context_scribe.observer.gemini_cli_provider import GeminiCliProvider
 from context_scribe.observer.copilot_provider import CopilotProvider
 from context_scribe.observer.claude_provider import ClaudeProvider
-from context_scribe.evaluator.gemini_cli_llm import GeminiCliEvaluator
-from context_scribe.evaluator.claude_llm import ClaudeEvaluator
-from context_scribe.evaluator.copilot_llm import CopilotEvaluator
+from context_scribe.evaluator import get_evaluator
 from context_scribe.bridge.mcp_client import MemoryBankClient
 
 logger = logging.getLogger("context_scribe")
@@ -223,11 +221,7 @@ async def run_daemon(tool: str, bank_path: str, debug: bool = False, evaluator_n
 
     if evaluator_name == "auto":
         evaluator_name = _detect_evaluator(tool)
-    evaluator = (
-        ClaudeEvaluator() if evaluator_name == "claude"
-        else CopilotEvaluator() if evaluator_name == "copilot"
-        else GeminiCliEvaluator()
-    )
+    evaluator = get_evaluator(evaluator_name)
     mcp_client = MemoryBankClient(bank_path=bank_path)
 
     try:
