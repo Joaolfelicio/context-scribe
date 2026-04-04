@@ -14,7 +14,7 @@ async def test_run_daemon_mcp_connection_failure():
     
     with patch("context_scribe.main.MemoryBankClient", return_value=mock_mcp):
         with patch("context_scribe.main.GeminiCliProvider", return_value=mock_provider):
-            with patch("context_scribe.main.GeminiCliEvaluator"):
+            with patch("context_scribe.main.get_evaluator", return_value=MagicMock()):
                 with patch("context_scribe.main.bootstrap_global_config"):
                     # Mock the Dashboard CLASS to prevent layout generation
                     with patch("context_scribe.main.Dashboard") as mock_db_class:

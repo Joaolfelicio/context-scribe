@@ -17,9 +17,7 @@ from rich.spinner import Spinner
 from context_scribe.observer.gemini_cli_provider import GeminiCliProvider
 from context_scribe.observer.copilot_provider import CopilotProvider
 from context_scribe.observer.claude_provider import ClaudeProvider
-from context_scribe.evaluator.gemini_cli_llm import GeminiCliEvaluator
-from context_scribe.evaluator.claude_llm import ClaudeEvaluator
-from context_scribe.evaluator.copilot_llm import CopilotEvaluator
+from context_scribe.evaluator import get_evaluator, EVALUATOR_REGISTRY
 from context_scribe.bridge.mcp_client import MemoryBankClient
 
 logger = logging.getLogger("context_scribe")
@@ -223,11 +221,7 @@ async def run_daemon(tool: str, bank_path: str, debug: bool = False, evaluator_n
 
     if evaluator_name == "auto":
         evaluator_name = _detect_evaluator(tool)
-    evaluator = (
-        ClaudeEvaluator() if evaluator_name == "claude"
-        else CopilotEvaluator() if evaluator_name == "copilot"
-        else GeminiCliEvaluator()
-    )
+    evaluator = get_evaluator(evaluator_name)
     mcp_client = MemoryBankClient(bank_path=bank_path)
 
     try:
@@ -305,7 +299,7 @@ async def run_daemon(tool: str, bank_path: str, debug: bool = False, evaluator_n
 @click.command()
 @click.option('--tool', default='gemini-cli', type=click.Choice(['gemini-cli', 'copilot', 'claude']), help='The AI tool to monitor')
 @click.option('--bank-path', default='~/.memory-bank', help='Path to your Memory Bank root')
-@click.option('--evaluator', 'evaluator_name', default='auto', type=click.Choice(['auto', 'copilot', 'claude', 'gemini']), help='Evaluator LLM to use (default: auto-detect)')
+@click.option('--evaluator', 'evaluator_name', default='auto', type=click.Choice(['auto'] + sorted(EVALUATOR_REGISTRY)), help='Evaluator LLM to use (default: auto-detect)')
 @click.option('--debug', is_flag=True, default=False, help='Stream plain debug logs instead of dashboard UI')
 def cli(tool, bank_path, evaluator_name, debug):
     """Context-Scribe: Persistent Secretary Daemon"""
