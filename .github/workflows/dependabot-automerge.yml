@@ -13,8 +13,8 @@
 #
 # Safety model: application ecosystems use open-pull-requests-limit: 0 in
 # dependabot.yml, so the only app-ecosystem PRs Dependabot can create are
-# security updates. This workflow adds defense-in-depth by also checking
-# the package ecosystem.
+# security updates. This workflow adds defense-in-depth by rejecting major
+# version bumps for direct dependencies.
 name: Dependabot auto-merge
 
 on:

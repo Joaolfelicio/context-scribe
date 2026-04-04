@@ -134,7 +134,7 @@ jobs:
           status=0
           while IFS= read -r dir; do
             echo "::group::cargo audit $dir"
-            if ! (cd "$dir" && cargo generate-lockfile 2>/dev/null; cargo audit); then
+            if ! (cd "$dir" && { cargo generate-lockfile 2>/dev/null || true; cargo audit; }); then
               status=1
             fi
             echo "::endgroup::"
@@ -162,14 +162,12 @@ jobs:
           # Audit each Python project found in the repo
           while IFS= read -r dir; do
             echo "::group::pip-audit $dir"
-            if [ -f "$dir/pyproject.toml" ]; then
-              if ! pip-audit "$dir"; then
-                status=1
-              fi
-            elif [ -f "$dir/requirements.txt" ]; then
+            if [ -f "$dir/requirements.txt" ]; then
               if ! pip-audit -r "$dir/requirements.txt"; then
                 status=1
               fi
+            elif [ -f "$dir/pyproject.toml" ]; then
+              echo "::warning file=$dir/pyproject.toml::pip-audit requires a requirements file or installed environment. Add a committed requirements.txt to audit this project in CI."
             fi
             echo "::endgroup::"
           done < <(
