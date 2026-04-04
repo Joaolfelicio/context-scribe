@@ -5,7 +5,10 @@ import json
 import re
 
 from context_scribe.observer.provider import Interaction
-from context_scribe.evaluator.llm import RuleOutput, INTERNAL_SIGNATURE
+from context_scribe.evaluator.llm import (
+    RuleOutput, INTERNAL_SIGNATURE, PREFILTER_PROMPT_TEMPLATE,
+    PrefilterResult, PrefilterMetrics
+)
 
 logger = logging.getLogger(__name__)
 
@@ -13,13 +16,79 @@ logger = logging.getLogger(__name__)
 class ClaudeEvaluator:
     """Evaluator that uses Claude Code CLI for headless rule extraction."""
 
-    def __init__(self):
+    def __init__(self, skip_prefilter: bool = False):
+        self.skip_prefilter = skip_prefilter
+        self.metrics = PrefilterMetrics()
         try:
             subprocess.run(["claude", "--version"], capture_output=True, check=True)
         except (subprocess.CalledProcessError, FileNotFoundError):
             logger.warning("Claude Code CLI not found.")
 
+    def pre_evaluate(self, interaction: Interaction) -> Optional[PrefilterResult]:
+        """Stage 1: Lightweight check using haiku to filter non-rule interactions."""
+        prompt = PREFILTER_PROMPT_TEMPLATE.format(
+            signature=INTERNAL_SIGNATURE,
+            content=interaction.content
+        )
+        try:
+            result = subprocess.run(
+                [
+                    "claude",
+                    "-p",
+                    "--output-format", "json",
+                    "--model", "haiku",
+                    "--no-session-persistence",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                input=prompt,
+                timeout=30
+            )
+
+            output = result.stdout.strip()
+            response_text = output
+            try:
+                data = json.loads(output)
+                if isinstance(data, dict):
+                    response_text = data.get("result", data.get("response", output))
+            except json.JSONDecodeError:
+                pass
+
+            # Strip markdown code fences if present
+            response_text = re.sub(r'```(?:json)?\s*', '', str(response_text)).strip()
+
+            # Parse the prefilter JSON response
+            json_match = re.search(r'\{[^}]*"contains_rule"[^}]*\}', str(response_text))
+            if json_match:
+                pf_data = json.loads(json_match.group(0))
+                return PrefilterResult(
+                    contains_rule=bool(pf_data.get("contains_rule", True)),
+                    confidence=float(pf_data.get("confidence", 0.0))
+                )
+
+            # If we can't parse, assume it might contain a rule (pass through)
+            logger.warning("Could not parse prefilter response, passing through to full eval")
+            return None
+
+        except subprocess.TimeoutExpired:
+            logger.warning("Prefilter timed out, passing through to full eval")
+            return None
+        except Exception as e:
+            logger.warning(f"Prefilter error: {e}, passing through to full eval")
+            return None
+
     def evaluate_interaction(self, interaction: Interaction, existing_global: str = "", existing_project: str = "") -> Optional[RuleOutput]:
+        # Stage 1: Pre-filter
+        if not self.skip_prefilter:
+            prefilter_result = self.pre_evaluate(interaction)
+            self.metrics.record_result(prefilter_result)
+            if prefilter_result and prefilter_result.should_skip_full_eval:
+                logger.info(f"Prefilter: skipping full eval for {interaction.project_name} "
+                           f"(confidence={prefilter_result.confidence:.2f})")
+                return None
+
+        # Stage 2: Full extraction
         prompt = f"""{INTERNAL_SIGNATURE}
 You are a 'Persistent Secretary' for an AI agent. Your job is to read user-agent chat logs
 and extract long-term behavioral rules, project constraints, or user preferences.
