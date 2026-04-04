@@ -37,6 +37,8 @@ class ClaudeLogHandler(FileSystemEventHandler):
 
 
 class ClaudeProvider(BaseProvider):
+    _MAX_PROCESSED_IDS = 10_000
+
     def __init__(self, log_dir: str = "~/.claude/projects/"):
         self.log_dir = Path(os.path.expanduser(log_dir))
         self.interaction_queue = []
@@ -122,6 +124,10 @@ class ClaudeProvider(BaseProvider):
                     if msg_id not in self.global_processed_ids:
                         self._extract_interaction(msg, project_name)
                         self.global_processed_ids.add(msg_id)
+
+                # Cap global_processed_ids to prevent unbounded growth
+                if len(self.global_processed_ids) > self._MAX_PROCESSED_IDS:
+                    self.global_processed_ids.clear()
             except Exception:
                 logger.debug("Failed to process file: %s", file_path)
             finally:
