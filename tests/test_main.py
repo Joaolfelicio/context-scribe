@@ -28,9 +28,10 @@ def test_detect_evaluator_fails_if_none_found():
     """Test that it raises ClickException if no tools are found."""
     with patch("shutil.which") as mock_which:
         mock_which.return_value = None
-        with pytest.raises(click.ClickException) as excinfo:
-            _detect_evaluator()
-        assert "No supported evaluator CLI found" in str(excinfo.value)
+        with patch.dict("os.environ", {}, clear=True):
+            with pytest.raises(click.ClickException) as excinfo:
+                _detect_evaluator()
+            assert "No supported evaluator found" in str(excinfo.value)
 
 def test_bootstrap_global_config_creates_file(tmp_path):
     # Mock home directory to our temp path

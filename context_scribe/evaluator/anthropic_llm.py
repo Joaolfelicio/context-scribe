@@ -1,6 +1,8 @@
 import logging
 import os
 
+import anthropic
+
 from context_scribe.evaluator.base_evaluator import BaseEvaluator
 
 logger = logging.getLogger(__name__)
@@ -15,13 +17,6 @@ class AnthropicEvaluator(BaseEvaluator):
 
     def __init__(self, model: str = "claude-haiku-4-5-20251001"):
         super().__init__()
-        try:
-            import anthropic
-        except ImportError:
-            raise ImportError(
-                "The 'anthropic' package is required for AnthropicEvaluator. "
-                "Install it with: pip install anthropic"
-            )
 
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
@@ -29,7 +24,7 @@ class AnthropicEvaluator(BaseEvaluator):
                 "ANTHROPIC_API_KEY environment variable is required for AnthropicEvaluator."
             )
 
-        self._client = anthropic.Anthropic(api_key=api_key)
+        self._client = anthropic.Anthropic(api_key=api_key, timeout=120.0)
         self._model = model
 
     def _execute_cli(self, prompt: str) -> str:
