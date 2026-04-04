@@ -8,8 +8,8 @@ logger = logging.getLogger(__name__)
 class ClaudeEvaluator(BaseEvaluator):
     """Evaluator that uses Claude Code CLI for headless rule extraction."""
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         try:
             subprocess.run(["claude", "--version"], capture_output=True, check=True)
         except (subprocess.CalledProcessError, FileNotFoundError):

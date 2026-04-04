@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 class CopilotEvaluator(BaseEvaluator):
     """Evaluator that uses the GitHub Copilot CLI for headless rule extraction."""
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self._cli_path = shutil.which("copilot")
         if not self._cli_path:
             logger.warning(

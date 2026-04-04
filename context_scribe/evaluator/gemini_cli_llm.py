@@ -7,8 +7,8 @@ logger = logging.getLogger(__name__)
 class GeminiCliEvaluator(BaseEvaluator):
     """Evaluator that uses Gemini CLI for headless rule extraction."""
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         try:
             subprocess.run(["gemini", "--version"], capture_output=True, check=True)
         except (subprocess.CalledProcessError, FileNotFoundError):
