@@ -33,7 +33,28 @@ def test_extract_interaction_internal_loop_filter():
     provider = GeminiProvider()
     # Should skip internal evaluation messages
     provider._extract_interaction({
-        "type": "user", 
+        "type": "user",
         "message": "--- CONTEXT-SCRIBE-INTERNAL-EVALUATION ---\nDo something"
     }, "test-project")
     assert len(provider.interaction_queue) == 0
+
+
+def test_processed_ids_bounded(tmp_path):
+    """Test that global_processed_ids is capped at _MAX_PROCESSED_IDS."""
+    provider = GeminiProvider(log_dir=str(tmp_path))
+    provider._MAX_PROCESSED_IDS = 5  # Use a small cap for testing
+
+    # Create a log file with more messages than the cap
+    messages = [{"id": str(i), "type": "user", "message": f"msg {i}"} for i in range(10)]
+    log_file = tmp_path / "test.json"
+    log_file.write_text(json.dumps({"sessionId": "s1", "messages": messages}))
+
+    provider._process_file(str(log_file))
+
+    # The set should have been cleared once it exceeded the cap
+    assert len(provider.global_processed_ids) <= provider._MAX_PROCESSED_IDS
+
+
+def test_max_processed_ids_constant():
+    """Test that GeminiProvider has _MAX_PROCESSED_IDS matching CopilotProvider."""
+    assert GeminiProvider._MAX_PROCESSED_IDS == 10000

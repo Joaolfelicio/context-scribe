@@ -191,3 +191,27 @@ def test_extract_interaction_list_content():
     assert len(provider.interaction_queue) == 1
     assert "Part 1" in provider.interaction_queue[0].content
     assert "Part 2" in provider.interaction_queue[0].content
+
+
+def test_processed_ids_bounded(tmp_path):
+    """Test that global_processed_ids is capped at _MAX_PROCESSED_IDS."""
+    log_dir = tmp_path / "projects"
+    log_dir.mkdir()
+
+    provider = ClaudeProvider(log_dir=str(log_dir))
+    provider._MAX_PROCESSED_IDS = 5  # Use a small cap for testing
+
+    # Create a JSONL file with more messages than the cap
+    lines = [json.dumps({"role": "user", "content": f"msg {i}"}) for i in range(10)]
+    log_file = log_dir / "conversation.jsonl"
+    log_file.write_text("\n".join(lines))
+
+    provider._process_file(str(log_file))
+
+    # The set should have been cleared once it exceeded the cap
+    assert len(provider.global_processed_ids) <= provider._MAX_PROCESSED_IDS
+
+
+def test_max_processed_ids_constant():
+    """Test that ClaudeProvider has _MAX_PROCESSED_IDS matching CopilotProvider."""
+    assert ClaudeProvider._MAX_PROCESSED_IDS == 10000

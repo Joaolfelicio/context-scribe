@@ -31,6 +31,8 @@ class GeminiLogHandler(FileSystemEventHandler):
 
 
 class GeminiProvider(BaseProvider):
+    _MAX_PROCESSED_IDS = 10000
+
     def __init__(self, log_dir: str = "~/.gemini/tmp/"):
         self.log_dir = Path(os.path.expanduser(log_dir))
         self.interaction_queue = []
@@ -108,6 +110,10 @@ class GeminiProvider(BaseProvider):
                     if msg_id not in self.global_processed_ids:
                         self._extract_interaction(msg, project_name)
                         self.global_processed_ids.add(msg_id)
+
+                # Cap global_processed_ids to prevent unbounded growth
+                if len(self.global_processed_ids) > self._MAX_PROCESSED_IDS:
+                    self.global_processed_ids.clear()
         except Exception:
             pass
         finally:
