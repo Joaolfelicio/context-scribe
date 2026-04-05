@@ -13,7 +13,7 @@ async def test_run_daemon_tools(tool, provider_class, evaluator_class, bootstrap
     """Test the daemon run loop for all supported tools."""
     
     with patch(f"context_scribe.main.{provider_class}", return_value=daemon_mocks.provider):
-        with patch(f"context_scribe.main.{evaluator_class}", return_value=daemon_mocks.evaluator):
+        with patch("context_scribe.main.get_evaluator", return_value=daemon_mocks.evaluator):
             with patch("context_scribe.main.MemoryBankClient", return_value=daemon_mocks.mcp):
                 with patch(f"context_scribe.main.{bootstrap_func}"):
                     # Mock Live to avoid rich rendering logic completely
