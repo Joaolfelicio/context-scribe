@@ -1,9 +1,9 @@
+import importlib.resources
 import json
 import logging
 import re
 import subprocess
 from abc import ABC, abstractmethod
-from pathlib import Path
 from typing import Optional
 
 from context_scribe.models.interaction import Interaction
@@ -13,28 +13,42 @@ from context_scribe.models.evaluator_models import (
 
 logger = logging.getLogger(__name__)
 
-_PREFILTER_TEMPLATE_PATH = Path(__file__).parent / "prefilter_template.md"
 
+def _parse_bool(value) -> Optional[bool]:
+    """Safely parse a boolean that may arrive as a string from LLM JSON.
 
-def _parse_bool(value) -> bool:
-    """Safely parse a boolean that may arrive as a string from LLM JSON."""
+    Returns ``None`` for unrecognised or null values so the caller can
+    fall back to full evaluation (fail-open behaviour).
+    """
     if isinstance(value, bool):
         return value
     if isinstance(value, str):
-        return value.strip().lower() in ("true", "1", "yes")
-    return bool(value)
+        normalised = value.strip().lower()
+        if normalised in ("true", "1", "yes"):
+            return True
+        if normalised in ("false", "0", "no"):
+            return False
+        return None  # unrecognised string → pass through
+    return None  # None / other types → pass through
+
+
+def _load_package_template(filename: str) -> str:
+    """Load a template file from this package using importlib.resources."""
+    return (
+        importlib.resources.files("context_scribe.evaluator")
+        .joinpath(filename)
+        .read_text(encoding="utf-8")
+    )
 
 
 class BaseEvaluator(ABC):
     def __init__(self, skip_prefilter: bool = False):
         self.skip_prefilter = skip_prefilter
         self.metrics = PrefilterMetrics()
-        # Load the prompt templates
-        template_path = Path(__file__).parent / "prompt_template.md"
-        with open(template_path, "r", encoding="utf-8") as f:
-            self.prompt_template = f.read()
-        with open(_PREFILTER_TEMPLATE_PATH, "r", encoding="utf-8") as f:
-            self._prefilter_template = f.read()
+        # Load the prompt templates via importlib.resources (works in
+        # packaged installs such as wheels / zip imports).
+        self.prompt_template = _load_package_template("prompt_template.md")
+        self._prefilter_template = _load_package_template("prefilter_template.md")
 
     @abstractmethod
     def _execute_cli(self, prompt: str) -> str:
@@ -68,8 +82,15 @@ class BaseEvaluator(ABC):
             json_match = re.search(r'\{[^}]*"contains_rule"[^}]*\}', response_text)
             if json_match:
                 pf_data = json.loads(json_match.group(0))
+                parsed = _parse_bool(pf_data.get("contains_rule", True))
+                if parsed is None:
+                    logger.warning(
+                        "Unrecognised contains_rule value %r, passing through to full eval",
+                        pf_data.get("contains_rule"),
+                    )
+                    return None
                 return PrefilterResult(
-                    contains_rule=_parse_bool(pf_data.get("contains_rule", True)),
+                    contains_rule=parsed,
                     confidence=float(pf_data.get("confidence", 0.0)),
                 )
 

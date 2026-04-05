@@ -87,7 +87,14 @@ def test_parse_bool_false_values():
     assert _parse_bool("False") is False
     assert _parse_bool("0") is False
     assert _parse_bool("no") is False
-    assert _parse_bool("") is False
+
+
+def test_parse_bool_unknown_values_return_none():
+    """Unrecognised or null values return None (fail-open)."""
+    assert _parse_bool("") is None
+    assert _parse_bool(None) is None
+    assert _parse_bool("maybe") is None
+    assert _parse_bool(42) is None
 
 
 # --- BaseEvaluator prefilter integration ---
