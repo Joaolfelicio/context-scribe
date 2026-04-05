@@ -172,12 +172,17 @@ TOOL_REGISTRY = {
 
 
 def _create_providers(tools: List[str]):
-    """Create and bootstrap providers for the given tool names."""
+    """Create and bootstrap providers for the given tool names.
+
+    Raises ValueError for unknown tool names.
+    """
     providers = []
     for tool in tools:
         entry = TOOL_REGISTRY.get(tool)
         if entry is None:
-            continue
+            raise ValueError(
+                f"Unknown tool '{tool}'. Available: {', '.join(sorted(TOOL_REGISTRY))}"
+            )
         provider_cls, bootstrap_fn = entry
         bootstrap_fn()
         providers.append((tool, provider_cls()))
@@ -246,18 +251,24 @@ async def run_daemon(tool: str, bank_path: str, debug: bool = False, evaluator_n
 
     display_name = ",".join(tool_names)
     db = Dashboard(display_name, bank_path)
-    queue: asyncio.Queue = asyncio.Queue()
+    queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
 
     async def _watch_provider(tool_name: str, provider):
         """Run a provider's watch() in a thread and feed interactions into the shared queue."""
         loop = asyncio.get_event_loop()
         watch_iter = provider.watch()
-        while True:
-            interaction = await loop.run_in_executor(None, next, watch_iter)
-            if interaction is not None:
-                await queue.put((tool_name, interaction))
+        try:
+            while True:
+                interaction = await loop.run_in_executor(None, next, watch_iter)
+                if interaction is not None:
+                    await queue.put((tool_name, interaction))
+        except (StopIteration, asyncio.CancelledError):
+            pass
+        except Exception as e:
+            logger.error("Watcher for %s failed: %s", tool_name, e)
 
     async def _loop(live=None):
+        watcher_tasks = []
         try:
             # Start a watcher task for each provider
             watcher_tasks = [
@@ -345,7 +356,11 @@ def cli(tool, tools_csv, bank_path, evaluator_name, debug):
     # Parse --tools if provided
     tools = None
     if tools_csv:
-        tools = [t.strip() for t in tools_csv.split(",") if t.strip()]
+        tools = list(dict.fromkeys(  # deduplicate preserving order
+            t.strip() for t in tools_csv.split(",") if t.strip()
+        ))
+        if not tools:
+            raise click.ClickException("--tools requires at least one tool name.")
         valid_tools = set(TOOL_REGISTRY)
         invalid = [t for t in tools if t not in valid_tools]
         if invalid:

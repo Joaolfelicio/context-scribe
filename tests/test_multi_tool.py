@@ -51,10 +51,10 @@ def test_create_providers_multiple():
     assert "claude" in names
 
 
-def test_create_providers_unknown_skipped():
+def test_create_providers_unknown_raises():
     from context_scribe.main import _create_providers
-    providers = _create_providers(["nonexistent"])
-    assert len(providers) == 0
+    with pytest.raises(ValueError, match="Unknown tool"):
+        _create_providers(["nonexistent"])
 
 
 def test_create_providers_calls_bootstrap():
