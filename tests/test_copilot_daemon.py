@@ -44,10 +44,10 @@ async def test_run_daemon_copilot_tool():
         return MagicMock()
     mock_mcp.save_rule.side_effect = side_effect
 
-    with patch("context_scribe.main.CopilotProvider", return_value=mock_provider):
-        with patch("context_scribe.main.Evaluator", return_value=mock_evaluator):
+    with patch("context_scribe.main.create_provider", return_value=mock_provider):
+        with patch("context_scribe.main.create_evaluator", return_value=mock_evaluator):
             with patch("context_scribe.main.MemoryBankClient", return_value=mock_mcp):
-                with patch("context_scribe.main.bootstrap_copilot_config"):
+                with patch("context_scribe.main.bootstrap_tool"):
                     # Mock Live to avoid rich rendering logic completely
                     with patch("context_scribe.main.Live") as mock_live:
                         with patch("os._exit") as mock_exit:
