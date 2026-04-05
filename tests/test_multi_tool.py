@@ -1,4 +1,5 @@
 """Tests for concurrent multi-tool daemon support."""
+import asyncio
 import sys
 from unittest.mock import patch, MagicMock
 import pytest
@@ -6,7 +7,7 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def mock_heavy_deps():
-    """Mock heavy imports so we can import main without mcp/rich/click."""
+    """Mock heavy imports so we can import main without mcp/rich."""
     mocks = {}
     for mod in ["mcp", "mcp.client", "mcp.client.stdio",
                  "rich", "rich.console", "rich.live", "rich.panel",
@@ -80,3 +81,61 @@ def test_create_providers_all_three():
                         with patch("context_scribe.main.ClaudeProvider", return_value=MagicMock()):
                             providers = _create_providers(["gemini-cli", "copilot", "claude"])
     assert len(providers) == 3
+
+
+# --- CLI tests for --tools flag ---
+
+def test_cli_tools_deduplication():
+    """--tools with duplicate entries should deduplicate preserving order."""
+    from click.testing import CliRunner
+    from context_scribe.main import cli
+
+    runner = CliRunner()
+    captured_tools = {}
+
+    original_run_daemon = None
+
+    async def fake_run_daemon(tool, bank_path, debug=False, evaluator_name="auto", tools=None):
+        captured_tools["tools"] = tools
+        return True
+
+    with patch("context_scribe.main.run_daemon", side_effect=fake_run_daemon) as mock_rd:
+        loop = asyncio.new_event_loop()
+        with patch("asyncio.run", side_effect=lambda coro: loop.run_until_complete(coro)):
+            result = runner.invoke(cli, ["--tools", "gemini-cli,gemini-cli,claude"])
+
+    assert result.exit_code == 0
+    assert captured_tools["tools"] == ["gemini-cli", "claude"]
+
+
+def test_cli_tools_invalid_tool():
+    """--tools with an unknown tool name should fail with a clear error."""
+    from click.testing import CliRunner
+    from context_scribe.main import cli
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--tools", "gemini-cli,nonexistent"])
+    assert result.exit_code != 0
+    assert "Unknown tool(s): nonexistent" in result.output
+
+
+def test_cli_tools_empty_string():
+    """--tools with an empty string should fail."""
+    from click.testing import CliRunner
+    from context_scribe.main import cli
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--tools", ""])
+    assert result.exit_code != 0
+    assert "--tools requires at least one tool name" in result.output
+
+
+def test_cli_tools_whitespace_only():
+    """--tools with only whitespace/commas should fail."""
+    from click.testing import CliRunner
+    from context_scribe.main import cli
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--tools", " , , "])
+    assert result.exit_code != 0
+    assert "--tools requires at least one tool name" in result.output

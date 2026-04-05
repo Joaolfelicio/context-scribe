@@ -233,7 +233,12 @@ def _status(msg: str, db, live, debug: bool):
 
 async def run_daemon(tool: str, bank_path: str, debug: bool = False, evaluator_name: str = "auto", tools: Optional[List[str]] = None) -> bool:
     # Build provider list: --tools takes precedence over --tool
-    tool_names = tools if tools else [tool]
+    if tools is not None:
+        if not tools:
+            raise ValueError("--tools was provided but resolved to an empty list.")
+        tool_names = tools
+    else:
+        tool_names = [tool]
     providers = _create_providers(tool_names)
     if not providers:
         return False
@@ -355,7 +360,7 @@ def cli(tool, tools_csv, bank_path, evaluator_name, debug):
 
     # Parse --tools if provided
     tools = None
-    if tools_csv:
+    if tools_csv is not None:
         tools = list(dict.fromkeys(  # deduplicate preserving order
             t.strip() for t in tools_csv.split(",") if t.strip()
         ))

@@ -4,12 +4,12 @@ from unittest.mock import MagicMock, patch
 from context_scribe.main import run_daemon
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("tool, provider_class, bootstrap_func, evaluator_name", [
-    ("gemini-cli", "GeminiCliProvider", "bootstrap_global_config", "gemini"),
-    ("copilot", "CopilotProvider", "bootstrap_copilot_config", "copilot"),
-    ("claude", "ClaudeProvider", "bootstrap_claude_config", "claude"),
+@pytest.mark.parametrize("tool, bootstrap_func, evaluator_name", [
+    ("gemini-cli", "bootstrap_global_config", "gemini"),
+    ("copilot", "bootstrap_copilot_config", "copilot"),
+    ("claude", "bootstrap_claude_config", "claude"),
 ])
-async def test_run_daemon_tools(tool, provider_class, bootstrap_func, evaluator_name, daemon_mocks):
+async def test_run_daemon_tools(tool, bootstrap_func, evaluator_name, daemon_mocks):
     """Test the daemon run loop for all supported tools."""
 
     with patch("context_scribe.main._create_providers", return_value=[(tool, daemon_mocks.provider)]):
