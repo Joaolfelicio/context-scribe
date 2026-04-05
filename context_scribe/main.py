@@ -262,8 +262,10 @@ async def run_daemon(tool: str, bank_path: str, debug: bool = False, evaluator_n
                 rule_output = await loop.run_in_executor(None, evaluator.evaluate_interaction, interaction, existing_global, existing_project)
 
                 # Sync prefilter metrics to dashboard
-                db.prefilter_passed = evaluator.metrics.prefilter_passed
-                db.prefilter_skipped = evaluator.metrics.prefilter_skipped
+                metrics = getattr(evaluator, 'metrics', None)
+                if metrics and isinstance(getattr(metrics, 'prefilter_passed', None), int):
+                    db.prefilter_passed = metrics.prefilter_passed
+                    db.prefilter_skipped = metrics.prefilter_skipped
 
                 if rule_output:
                     dest_proj = "global" if rule_output.scope == "GLOBAL" else interaction.project_name

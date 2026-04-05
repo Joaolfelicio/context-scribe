@@ -52,7 +52,7 @@ def test_evaluator_timeout_handling():
 
 def test_evaluator_cli_invocation_flags():
     """Verify that the gemini CLI is called with the correct flags."""
-    evaluator = GeminiCliEvaluator()
+    evaluator = GeminiCliEvaluator(skip_prefilter=True)
     mock_interaction = Interaction(timestamp=None, role="user", content="Test prompt", project_name="test")
     
     with patch("subprocess.run") as mock_run:
