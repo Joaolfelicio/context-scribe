@@ -262,7 +262,7 @@ async def run_daemon(tool: str, bank_path: str, debug: bool = False, evaluator_n
                 interaction = await loop.run_in_executor(None, next, watch_iter)
                 if interaction is not None:
                     await queue.put((tool_name, interaction))
-        except (StopIteration, asyncio.CancelledError):
+        except (StopIteration, asyncio.CancelledError, KeyboardInterrupt):
             pass
         except Exception as e:
             logger.error("Watcher for %s failed: %s", tool_name, e)
