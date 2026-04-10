@@ -28,9 +28,19 @@ def test_detect_evaluator_fails_if_none_found():
     """Test that it raises ClickException if no tools are found."""
     with patch("shutil.which") as mock_which:
         mock_which.return_value = None
-        with pytest.raises(click.ClickException) as excinfo:
-            _detect_evaluator()
-        assert "No supported evaluator CLI found" in str(excinfo.value)
+        with patch.dict("os.environ", {}, clear=True):
+            with pytest.raises(click.ClickException) as excinfo:
+                _detect_evaluator()
+            assert "No supported evaluator found" in str(excinfo.value)
+
+def test_detect_evaluator_falls_back_to_anthropic_sdk():
+    """Test that _detect_evaluator returns 'anthropic' when no CLI tools found but API key is set."""
+    with patch("shutil.which") as mock_which:
+        mock_which.return_value = None
+        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
+            with patch.dict("context_scribe.main.EVALUATOR_REGISTRY", {"anthropic": object}):
+                result = _detect_evaluator()
+                assert result == "anthropic"
 
 def test_bootstrap_global_config_creates_file(tmp_path):
     # Mock home directory to our temp path

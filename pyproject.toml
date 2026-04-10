@@ -16,6 +16,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+anthropic = [
+    "anthropic>=0.40.0"
+]
 test = [
     "pytest",
     "pytest-asyncio",

@@ -216,10 +216,14 @@ def _detect_evaluator(preferred_tool: Optional[str] = None) -> str:
         if shutil.which(cli_cmd):
             return cli_to_evaluator[cli_cmd]
 
-    # 3. Fail fast if no evaluator is found
+    # 3. Fall back to Anthropic SDK if API key is set
+    if os.environ.get("ANTHROPIC_API_KEY") and "anthropic" in EVALUATOR_REGISTRY:
+        return "anthropic"
+
+    # 4. Fail fast if no evaluator is found
     raise click.ClickException(
-        "No supported evaluator CLI found (claude, copilot, or gemini). "
-        "Please install one of these tools to use context-scribe."
+        "No supported evaluator found. Install a CLI tool (claude, copilot, or gemini) "
+        "or set ANTHROPIC_API_KEY to use the Anthropic SDK evaluator."
     )
 
 
