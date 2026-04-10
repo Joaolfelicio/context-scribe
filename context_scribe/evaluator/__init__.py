@@ -12,6 +12,13 @@ EVALUATOR_REGISTRY: dict[str, type[BaseEvaluator]] = {
     "copilot": CopilotEvaluator,
 }
 
+# Register AnthropicEvaluator only if the SDK is available
+try:
+    from .anthropic_llm import AnthropicEvaluator
+    EVALUATOR_REGISTRY["anthropic"] = AnthropicEvaluator
+except ImportError:
+    pass
+
 
 def get_evaluator(name: str) -> BaseEvaluator:
     """Return an evaluator instance by name. Raises ValueError for unknown names."""
