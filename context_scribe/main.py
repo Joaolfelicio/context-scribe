@@ -41,6 +41,9 @@ class Dashboard:
         self.last_event_time = "N/A"
         self.update_count = 0
         self.history = []  # List of (time, file_path, description) tuples
+        self.prefilter_passed = 0
+        self.prefilter_skipped = 0
+        self.prefilter_errors = 0
 
     def add_history(self, file_path: str, description: str):
         self.update_count += 1
@@ -100,9 +103,13 @@ class Dashboard:
         # Footer
         stats = Table.grid(expand=True)
         stats.add_column(justify="left")
+        stats.add_column(justify="center")
         stats.add_column(justify="right")
+        total_processed = self.prefilter_passed + self.prefilter_skipped
+        skip_rate = (self.prefilter_skipped / total_processed * 100) if total_processed > 0 else 0.0
         stats.add_row(
             Text(f" System: Active", style="green"),
+            Text(f"Prefilter: {self.prefilter_skipped} skipped / {total_processed} total ({skip_rate:.0f}%) | {self.prefilter_errors} errors", style="dim"),
             Text(f"Total Rules Extracted: {self.update_count} ", style="bold green")
         )
         layout["footer"].update(Panel(stats, border_style="dim"))
@@ -235,7 +242,7 @@ def _status(msg: str, db, live, debug: bool):
         live.update(db.generate_layout())
 
 
-async def run_daemon(tool: str, bank_path: str, debug: bool = False, evaluator_name: str = "auto", tools: Optional[List[str]] = None) -> bool:
+async def run_daemon(tool: str, bank_path: str, debug: bool = False, evaluator_name: str = "auto", skip_prefilter: bool = False, tools: Optional[List[str]] = None) -> bool:
     # Build provider list: --tools takes precedence over --tool
     if tools is not None:
         if not tools:
@@ -249,7 +256,7 @@ async def run_daemon(tool: str, bank_path: str, debug: bool = False, evaluator_n
 
     if evaluator_name == "auto":
         evaluator_name = _detect_evaluator(tool_names[0])
-    evaluator = get_evaluator(evaluator_name)
+    evaluator = get_evaluator(evaluator_name, skip_prefilter=skip_prefilter)
     mcp_client = MemoryBankClient(bank_path=bank_path)
 
     try:
@@ -308,6 +315,13 @@ async def run_daemon(tool: str, bank_path: str, debug: bool = False, evaluator_n
                 loop = asyncio.get_event_loop()
                 rule_output = await loop.run_in_executor(None, evaluator.evaluate_interaction, interaction, existing_global, existing_project)
 
+                # Sync prefilter metrics to dashboard
+                metrics = getattr(evaluator, 'metrics', None)
+                if metrics and isinstance(getattr(metrics, 'prefilter_passed', None), int):
+                    db.prefilter_passed = metrics.prefilter_passed
+                    db.prefilter_skipped = metrics.prefilter_skipped
+                    db.prefilter_errors = metrics.prefilter_errors
+
                 if rule_output:
                     dest_proj = "global" if rule_output.scope == "GLOBAL" else interaction.project_name
                     dest_file = "global_rules.md" if rule_output.scope == "GLOBAL" else "rules.md"
@@ -357,7 +371,8 @@ async def run_daemon(tool: str, bank_path: str, debug: bool = False, evaluator_n
 @click.option('--bank-path', default='~/.memory-bank', help='Path to your Memory Bank root')
 @click.option('--evaluator', 'evaluator_name', default='auto', type=click.Choice(['auto'] + sorted(EVALUATOR_REGISTRY)), help='Evaluator LLM to use (default: auto-detect)')
 @click.option('--debug', is_flag=True, default=False, help='Stream plain debug logs instead of dashboard UI')
-def cli(tool, tools_csv, bank_path, evaluator_name, debug):
+@click.option('--skip-prefilter', is_flag=True, default=False, help='Disable Stage 1 prefilter (send all interactions to full eval)')
+def cli(tool, tools_csv, bank_path, evaluator_name, debug, skip_prefilter):
     """Context-Scribe: Persistent Secretary Daemon"""
     if debug:
         logging.basicConfig(level=logging.DEBUG, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
@@ -379,7 +394,7 @@ def cli(tool, tools_csv, bank_path, evaluator_name, debug):
             )
 
     try:
-        asyncio.run(run_daemon(tool, bank_path, debug=debug, evaluator_name=evaluator_name, tools=tools))
+        asyncio.run(run_daemon(tool, bank_path, debug=debug, evaluator_name=evaluator_name, skip_prefilter=skip_prefilter, tools=tools))
     except KeyboardInterrupt:
         pass
 

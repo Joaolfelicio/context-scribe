@@ -95,7 +95,7 @@ def test_cli_tools_deduplication():
 
     original_run_daemon = None
 
-    async def fake_run_daemon(tool, bank_path, debug=False, evaluator_name="auto", tools=None):
+    async def fake_run_daemon(tool, bank_path, debug=False, evaluator_name="auto", skip_prefilter=False, tools=None):
         captured_tools["tools"] = tools
         return True
 
