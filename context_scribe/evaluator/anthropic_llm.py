@@ -15,8 +15,8 @@ class AnthropicEvaluator(BaseEvaluator):
     Uses claude-haiku by default for cost efficiency.
     """
 
-    def __init__(self, model: str = "claude-haiku-4-5-20251001"):
-        super().__init__()
+    def __init__(self, model: str = "claude-haiku-4-5-20251001", **kwargs):
+        super().__init__(**kwargs)
 
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:

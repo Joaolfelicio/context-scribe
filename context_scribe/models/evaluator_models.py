@@ -41,7 +41,6 @@ class PrefilterMetrics:
     def record_result(self, result: Optional["PrefilterResult"]) -> None:
         if result is None:
             self.prefilter_errors += 1
-            self.prefilter_passed += 1  # On error, pass through to full eval
         elif result.should_skip_full_eval:
             self.prefilter_skipped += 1
         else:

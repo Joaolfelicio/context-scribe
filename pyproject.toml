@@ -26,5 +26,8 @@ test = [
     "pytest-cov"
 ]
 
+[tool.setuptools.package-data]
+"context_scribe.evaluator" = ["*.md"]
+
 [project.scripts]
 context-scribe = "context_scribe.main:cli"

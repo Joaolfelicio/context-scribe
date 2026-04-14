@@ -1,6 +1,7 @@
 import json
 from datetime import datetime
 from unittest.mock import patch, MagicMock
+import subprocess
 
 import pytest
 
@@ -17,6 +18,21 @@ def _make_interaction(content="Can you help me fix this bug?"):
         project_name="test-project",
         metadata={},
     )
+
+
+@pytest.fixture
+def evaluator():
+    """Create a GeminiCliEvaluator with manually initialised base fields."""
+    from context_scribe.evaluator.gemini_cli_llm import GeminiCliEvaluator
+    from context_scribe.evaluator.base_evaluator import _load_package_template
+
+    with patch.object(GeminiCliEvaluator, '__init__', lambda self, **kw: None):
+        ev = GeminiCliEvaluator.__new__(GeminiCliEvaluator)
+        ev.skip_prefilter = False
+        ev.metrics = PrefilterMetrics()
+        ev.prompt_template = _load_package_template("prompt_template.md")
+        ev._prefilter_template = _load_package_template("prefilter_template.md")
+    return ev
 
 
 # --- PrefilterResult tests ---
@@ -63,7 +79,7 @@ def test_metrics_record_error():
     m = PrefilterMetrics()
     m.record_result(None)
     assert m.prefilter_errors == 1
-    assert m.prefilter_passed == 1  # errors pass through
+    assert m.prefilter_passed == 0  # errors tracked separately
 
 
 def test_metrics_skip_rate_empty():
@@ -99,24 +115,8 @@ def test_parse_bool_unknown_values_return_none():
 
 # --- BaseEvaluator prefilter integration ---
 
-def test_prefilter_skips_non_rule_interaction():
+def test_prefilter_skips_non_rule_interaction(evaluator):
     """Evaluator skips full eval when prefilter says no rule with high confidence."""
-    from context_scribe.evaluator.gemini_cli_llm import GeminiCliEvaluator
-
-    with patch.object(GeminiCliEvaluator, '__init__', lambda self, **kw: None):
-        evaluator = GeminiCliEvaluator.__new__(GeminiCliEvaluator)
-        # Manually init the base class fields
-        from context_scribe.evaluator.base_evaluator import BaseEvaluator
-        from pathlib import Path
-        evaluator.skip_prefilter = False
-        evaluator.metrics = PrefilterMetrics()
-        template_path = Path(__file__).parent.parent / "context_scribe" / "evaluator" / "prompt_template.md"
-        with open(template_path) as f:
-            evaluator.prompt_template = f.read()
-        prefilter_path = Path(__file__).parent.parent / "context_scribe" / "evaluator" / "prefilter_template.md"
-        with open(prefilter_path) as f:
-            evaluator._prefilter_template = f.read()
-
     prefilter_json = json.dumps({"contains_rule": False, "confidence": 0.95})
     with patch.object(type(evaluator), '_execute_cli', return_value=prefilter_json):
         result = evaluator.evaluate_interaction(_make_interaction(), "", "")
@@ -125,22 +125,8 @@ def test_prefilter_skips_non_rule_interaction():
     assert evaluator.metrics.prefilter_skipped == 1
 
 
-def test_prefilter_passes_rule_interaction():
+def test_prefilter_passes_rule_interaction(evaluator):
     """Evaluator runs full eval when prefilter detects a rule."""
-    from context_scribe.evaluator.gemini_cli_llm import GeminiCliEvaluator
-
-    with patch.object(GeminiCliEvaluator, '__init__', lambda self, **kw: None):
-        evaluator = GeminiCliEvaluator.__new__(GeminiCliEvaluator)
-        evaluator.skip_prefilter = False
-        evaluator.metrics = PrefilterMetrics()
-        from pathlib import Path
-        template_path = Path(__file__).parent.parent / "context_scribe" / "evaluator" / "prompt_template.md"
-        with open(template_path) as f:
-            evaluator.prompt_template = f.read()
-        prefilter_path = Path(__file__).parent.parent / "context_scribe" / "evaluator" / "prefilter_template.md"
-        with open(prefilter_path) as f:
-            evaluator._prefilter_template = f.read()
-
     prefilter_json = json.dumps({"contains_rule": True, "confidence": 0.9})
     full_eval_json = json.dumps({
         "scope": "GLOBAL",
@@ -165,21 +151,9 @@ def test_prefilter_passes_rule_interaction():
     assert evaluator.metrics.prefilter_passed == 1
 
 
-def test_skip_prefilter_flag_bypasses_stage1():
+def test_skip_prefilter_flag_bypasses_stage1(evaluator):
     """With skip_prefilter=True, no prefilter call is made."""
-    from context_scribe.evaluator.gemini_cli_llm import GeminiCliEvaluator
-
-    with patch.object(GeminiCliEvaluator, '__init__', lambda self, **kw: None):
-        evaluator = GeminiCliEvaluator.__new__(GeminiCliEvaluator)
-        evaluator.skip_prefilter = True
-        evaluator.metrics = PrefilterMetrics()
-        from pathlib import Path
-        template_path = Path(__file__).parent.parent / "context_scribe" / "evaluator" / "prompt_template.md"
-        with open(template_path) as f:
-            evaluator.prompt_template = f.read()
-        prefilter_path = Path(__file__).parent.parent / "context_scribe" / "evaluator" / "prefilter_template.md"
-        with open(prefilter_path) as f:
-            evaluator._prefilter_template = f.read()
+    evaluator.skip_prefilter = True
 
     full_eval_json = json.dumps({
         "scope": "GLOBAL",
@@ -197,23 +171,8 @@ def test_skip_prefilter_flag_bypasses_stage1():
     assert result is not None
 
 
-def test_prefilter_error_passes_through():
+def test_prefilter_error_passes_through(evaluator):
     """On prefilter error, pass through to full eval (fail-open)."""
-    from context_scribe.evaluator.gemini_cli_llm import GeminiCliEvaluator
-    import subprocess
-
-    with patch.object(GeminiCliEvaluator, '__init__', lambda self, **kw: None):
-        evaluator = GeminiCliEvaluator.__new__(GeminiCliEvaluator)
-        evaluator.skip_prefilter = False
-        evaluator.metrics = PrefilterMetrics()
-        from pathlib import Path
-        template_path = Path(__file__).parent.parent / "context_scribe" / "evaluator" / "prompt_template.md"
-        with open(template_path) as f:
-            evaluator.prompt_template = f.read()
-        prefilter_path = Path(__file__).parent.parent / "context_scribe" / "evaluator" / "prefilter_template.md"
-        with open(prefilter_path) as f:
-            evaluator._prefilter_template = f.read()
-
     full_eval_json = json.dumps({
         "scope": "GLOBAL",
         "description": "Tab preference",
@@ -234,7 +193,6 @@ def test_prefilter_error_passes_through():
 
     assert result is not None
     assert evaluator.metrics.prefilter_errors == 1
-    assert evaluator.metrics.prefilter_passed == 1  # error counts as pass-through
 
 
 def test_parse_bool_handles_string_false_from_llm():
